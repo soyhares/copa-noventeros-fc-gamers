@@ -1,0 +1,927 @@
+/* ================= FIREBASE / FIRESTORE ================= */
+import { firebaseConfig } from './firebase-config.js';
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js';
+import {
+  getFirestore, doc, getDoc, setDoc, deleteDoc, onSnapshot
+} from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
+
+const fbApp = initializeApp(firebaseConfig);
+const db = getFirestore(fbApp);
+
+async function fGet(col, id){
+  try{ const snap = await getDoc(doc(db,col,id)); return snap.exists() ? snap.data() : null; }
+  catch(e){ return null; }
+}
+async function fSet(col, id, data){
+  try{ await setDoc(doc(db,col,id), data); return true; }
+  catch(e){ return false; }
+}
+async function fDelete(col, id){
+  try{ await deleteDoc(doc(db,col,id)); return true; }
+  catch(e){ return false; }
+}
+
+const DEFAULT_TEAMS = {
+  clubs: ["Real Madrid","Manchester City","FC Barcelona","Liverpool","Bayern Múnich","Paris Saint-Germain","Arsenal","Inter de Milán","Atlético de Madrid","Chelsea","Manchester United","Juventus","Borussia Dortmund","AC Milan","Napoli","Bayer Leverkusen","Tottenham Hotspur","Aston Villa","Newcastle United","Benfica","Porto","RB Leipzig","Sevilla","Villarreal","AS Monaco"],
+  countries: ["Francia","Argentina","Brasil","Inglaterra","España","Portugal","Alemania","Países Bajos","Italia","Bélgica","Croacia","Uruguay","Colombia","Marruecos","Estados Unidos","México","Japón","Corea del Sur","Dinamarca","Suiza","Turquía","Ecuador","Canadá","Senegal","Nigeria"]
+};
+
+/* ================= STATE ================= */
+let INDEX = null;       // { tournaments:[{id,name,size,createdAt,status}], activeId, adminPin, validTeams:{clubs,countries} }
+let CURRENT = null;     // full active tournament object
+let ADMIN_UNLOCKED = false;
+let VIEW = 'home';
+let SUBVIEW_ADMIN = 'panel';
+let SUBVIEW_TOURN = 'grupos';
+let unsubTournament = null;
+
+const norm = s => (s||'').trim().toLowerCase();
+function isTypingNow(){
+  const tag = document.activeElement && document.activeElement.tagName;
+  return tag==='INPUT' || tag==='TEXTAREA' || tag==='SELECT';
+}
+
+async function loadIndex(){
+  let idx = await fGet('meta','config');
+  if(!idx){
+    idx = { tournaments:[], activeId:null, adminPin:null, validTeams: DEFAULT_TEAMS };
+    await fSet('meta','config', idx);
+  }
+  if(!idx.validTeams) idx.validTeams = DEFAULT_TEAMS;
+  INDEX = idx;
+  return idx;
+}
+async function saveIndex(){ await fSet('meta','config', INDEX); }
+
+async function loadTournament(id){
+  if(!id) return null;
+  return await fGet('tournaments', id);
+}
+async function saveTournament(t){ t.updatedAt = Date.now(); await fSet('tournaments', t.id, t); CURRENT = t; }
+
+async function loadHistory(){ const h = await fGet('meta','history'); return (h && h.items) ? h.items : []; }
+async function saveHistory(h){ await fSet('meta','history', {items:h}); }
+
+/* ---- suscripciones en tiempo real (reemplazan el polling) ---- */
+function attachTournamentListener(id){
+  if(unsubTournament){ unsubTournament(); unsubTournament=null; }
+  if(!id){ CURRENT = null; return; }
+  unsubTournament = onSnapshot(doc(db,'tournaments', id), (snap)=>{
+    if(isTypingNow()) return; // no interrumpir si alguien está escribiendo
+    CURRENT = snap.exists() ? snap.data() : null;
+    render();
+  });
+}
+function attachIndexListener(){
+  onSnapshot(doc(db,'meta','config'), (snap)=>{
+    if(!snap.exists() || isTypingNow()) return;
+    const data = snap.data();
+    const activeChanged = !INDEX || INDEX.activeId !== data.activeId;
+    INDEX = data;
+    if(!INDEX.validTeams) INDEX.validTeams = DEFAULT_TEAMS;
+    if(activeChanged) attachTournamentListener(INDEX.activeId);
+    render();
+  });
+}
+
+
+function newId(){ return 't'+Math.random().toString(36).slice(2,9); }
+function uid(){ return 'p'+Math.random().toString(36).slice(2,9); }
+
+/* ================= TOURNAMENT MODEL ================= */
+function blankTournament(name, size, eventDate, regDeadline){
+  return {
+    id:newId(), name, size, eventDate, regDeadline,
+    status:'registration', // registration -> drawn(teams) -> groups -> playoffs -> finished
+    players:[],            // {id, alias, club, country, assignedTeam}
+    drawnTeams:[],         // selected N teams (strings, tagged with type)
+    groups:null,           // { A:[playerId,...], B:[...] }
+    groupMatches:null,     // { A:[{id,p1,p2,s1,s2,played}], B:[...] }
+    bracket:null,          // { rounds: [ [{p1,p2,s1,s2,played,winner}] ] }
+    champion:null,
+  };
+}
+
+function shuffle(arr){
+  const a=[...arr];
+  for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; }
+  return a;
+}
+
+/* ---- validation ---- */
+function findTeamMatch(value, type){
+  const list = type==='club' ? INDEX.validTeams.clubs : INDEX.validTeams.countries;
+  return list.find(t => norm(t)===norm(value));
+}
+function isTaken(t, field){
+  return t.players.some(p => norm(p[field]) === norm(arguments[2]));
+}
+function aliasTaken(t, alias){ return t.players.some(p=>norm(p.alias)===norm(alias)); }
+function clubTaken(t, club){ return t.players.some(p=>norm(p.club)===norm(club)); }
+function countryTaken(t, country){ return t.players.some(p=>norm(p.country)===norm(country)); }
+
+/* ---- group/round-robin ---- */
+function roundRobinPairs(ids){
+  const pairs=[];
+  for(let i=0;i<ids.length;i++) for(let j=i+1;j<ids.length;j++) pairs.push([ids[i],ids[j]]);
+  return pairs;
+}
+function makeGroupsAndMatches(t){
+  const numGroups = t.size/4;
+  const shuffled = shuffle(t.players.map(p=>p.id));
+  const groups = {};
+  const letters = 'ABCDEFGH';
+  for(let g=0; g<numGroups; g++){
+    groups[letters[g]] = shuffled.slice(g*4, g*4+4);
+  }
+  const groupMatches = {};
+  for(const key in groups){
+    groupMatches[key] = roundRobinPairs(groups[key]).map(([p1,p2],i)=>({id:key+'-'+i,p1,p2,s1:null,s2:null,played:false}));
+  }
+  t.groups = groups; t.groupMatches = groupMatches; t.status='groups';
+}
+function playerName(t,id){ const p=t.players.find(x=>x.id===id); return p? p.alias : '—'; }
+function playerTeam(t,id){ const p=t.players.find(x=>x.id===id); return p? p.assignedTeam : '—'; }
+
+function computeStandings(t, groupKey){
+  const ids = t.groups[groupKey];
+  const table = {}; ids.forEach(id=>table[id]={id,pj:0,pg:0,pe:0,pp:0,gf:0,gc:0,pts:0});
+  (t.groupMatches[groupKey]||[]).forEach(m=>{
+    if(!m.played) return;
+    const a=table[m.p1], b=table[m.p2];
+    a.pj++; b.pj++; a.gf+=m.s1; a.gc+=m.s2; b.gf+=m.s2; b.gc+=m.s1;
+    if(m.s1>m.s2){a.pg++;a.pts+=3;b.pp++;}
+    else if(m.s1<m.s2){b.pg++;b.pts+=3;a.pp++;}
+    else {a.pe++;b.pe++;a.pts++;b.pts++;}
+  });
+  return Object.values(table).sort((x,y)=> y.pts-x.pts || (y.gf-y.gc)-(x.gf-x.gc) || y.gf-x.gf);
+}
+function allGroupMatchesPlayed(t){
+  return Object.values(t.groupMatches).every(list=>list.every(m=>m.played));
+}
+function goleoTable(t){
+  const totals = {}; t.players.forEach(p=>totals[p.id]=0);
+  Object.values(t.groupMatches||{}).flat().forEach(m=>{ if(m.played){ totals[m.p1]+=m.s1; totals[m.p2]+=m.s2; }});
+  if(t.bracket) t.bracket.rounds.flat().forEach(m=>{ if(m.played){ totals[m.p1]=(totals[m.p1]||0)+m.s1; totals[m.p2]=(totals[m.p2]||0)+m.s2; }});
+  return Object.entries(totals).map(([id,goals])=>({id,goals})).sort((a,b)=>b.goals-a.goals);
+}
+
+/* ---- bracket ---- */
+function buildBracketFromGroups(t){
+  const letters = Object.keys(t.groups);
+  const standingsByGroup = letters.map(k=>computeStandings(t,k));
+  const round0 = [];
+  for(let i=0;i<letters.length;i+=2){
+    const gA = standingsByGroup[i], gB = standingsByGroup[i+1];
+    round0.push({p1:gA[0].id,p2:gB[1].id,s1:null,s2:null,played:false,winner:null});
+    round0.push({p1:gB[0].id,p2:gA[1].id,s1:null,s2:null,played:false,winner:null});
+  }
+  t.bracket = { rounds:[round0] };
+  t.status='playoffs';
+}
+function tryAdvanceBracket(t){
+  const rounds = t.bracket.rounds;
+  const last = rounds[rounds.length-1];
+  if(!last.every(m=>m.played)) return;
+  if(last.length===1){ t.champion = last[0].winner; t.status='finished'; return; }
+  const next = [];
+  for(let i=0;i<last.length;i+=2){
+    next.push({p1:last[i].winner,p2:last[i+1].winner,s1:null,s2:null,played:false,winner:null});
+  }
+  rounds.push(next);
+}
+function roundLabel(totalRounds, idx){
+  const remaining = totalRounds-idx;
+  if(remaining===1) return 'Final';
+  if(remaining===2) return 'Semifinales';
+  if(remaining===3) return 'Cuartos de final';
+  if(remaining===4) return 'Octavos de final';
+  return 'Ronda '+(idx+1);
+}
+
+/* ================= RENDER ================= */
+const $main = document.getElementById('main');
+function setActiveTab(){
+  document.querySelectorAll('.tabbar button').forEach(b=>b.classList.toggle('active', b.dataset.view===VIEW));
+}
+function statusLabel(t){
+  if(!t) return { text:'Sin torneo', cls:'' };
+  const map = {registration:'Inscripciones abiertas', drawn:'Equipos sorteados', groups:'Fase de grupos', playoffs:'Playoffs', finished:'Finalizado'};
+  return { text: map[t.status]||t.status, cls: t.status==='registration'?'live':'' };
+}
+
+async function render(){
+  setActiveTab();
+  document.getElementById('tname-badge').textContent = CURRENT ? CURRENT.name : 'FC Gamers';
+  const st = statusLabel(CURRENT);
+  const pillEl = document.getElementById('status-pill');
+  pillEl.textContent = st.text; pillEl.className = 'pill '+st.cls;
+
+  if(VIEW==='home') return renderHome();
+  if(VIEW==='register') return renderRegister();
+  if(VIEW==='tournament') return renderTournament();
+  if(VIEW==='admin') return renderAdmin();
+}
+
+function renderHome(){
+  const t = CURRENT;
+  let html = '';
+  html += `<div class="hero">
+    <div class="kicker">TORNEOS ONLINE · 100% GRATUITOS</div>
+    <h1>COPAS<span class="g">NOVENTEROS FC GAMERS</span></h1>
+    <p>Compite. Diviértete. Vive cada copa como se debe.</p>
+  </div>`;
+
+  if(!t){
+    html += `<div class="empty"><span class="ic"><span class="material-symbols-outlined">sports_esports</span></span>Todavía no hay un torneo activo.<br>El admin debe crear uno.</div>`;
+  } else {
+    html += `<div class="card card-accent">
+      <div class="list-item"><span class="name"><span class="material-symbols-outlined">calendar_month</span> Fecha del torneo</span><span>${fmtDate(t.eventDate)}</span></div>
+      <div class="list-item"><span class="name"><span class="material-symbols-outlined">hourglass_empty</span> Cierre de inscripción</span><span>${fmtDate(t.regDeadline)}</span></div>
+      <div class="list-item"><span class="name"><span class="material-symbols-outlined">group</span> Cupos</span><span>${t.players.length}/${t.size}</span></div>
+    </div>`;
+
+    if(t.status==='registration'){
+      html += `<button class="btn" data-nav="register">Inscribirme al torneo</button>`;
+    } else {
+      html += `<button class="btn secondary" data-nav="tournament">Ver estado del torneo</button>`;
+    }
+
+    if(t.status==='finished' && t.champion){
+      html += `<div class="champ-banner card"><div class="cup"><span class="material-symbols-outlined">emoji_events</span></div><h2>${playerName(t,t.champion)}</h2><p>Campeón de ${t.name}</p></div>`;
+    }
+  }
+
+  html += `<div class="section-title"><div class="num"><span class="material-symbols-outlined">info</span></div><h3>Dinámica del torneo</h3></div>
+  <div class="card tight small muted">
+    <b style="color:var(--white)">1. Registro —</b> cada jugador propone un alias, un club y un país.<br><br>
+    <b style="color:var(--white)">2. Sorteo de equipos —</b> de lo propuesto por todos, se sortean los equipos irrepetibles que competirán.<br><br>
+    <b style="color:var(--white)">3. Asignación —</b> cada equipo sorteado se asigna al azar a un jugador registrado.<br><br>
+    <b style="color:var(--white)">4. Sorteo de grupos —</b> los jugadores se dividen en grupos al azar.<br><br>
+    <b style="color:var(--white)">5. Clasificación —</b> avanzan quienes sumen más puntos en su grupo.
+  </div>`;
+
+  html += `<button class="btn ghost" data-action="show-history">Ver historial de campeones</button>`;
+  $main.innerHTML = html;
+  bindNav();
+  $main.querySelector('[data-action="show-history"]').onclick = showHistory;
+}
+
+async function showHistory(){
+  const hist = await loadHistory();
+  let html = `<div class="section-title"><div class="num"><span class="material-symbols-outlined">emoji_events</span></div><h3>Historial de torneos</h3></div>`;
+  if(hist.length===0){ html += `<div class="empty"><span class="ic"><span class="material-symbols-outlined">inbox</span></span>Aún no hay torneos finalizados.</div>`; }
+  else {
+    html += `<div class="card">`;
+    hist.slice().reverse().forEach(h=>{
+      html += `<div class="hist-item"><b>${h.name}</b><br><span class="muted small">Campeón: ${h.champion} · ${fmtDate(h.date)} · ${h.size} equipos</span></div>`;
+    });
+    html += `</div>`;
+  }
+  html += `<button class="btn ghost" data-action="back-home">Volver</button>`;
+  $main.innerHTML = html;
+  $main.querySelector('[data-action="back-home"]').onclick = ()=>{ VIEW='home'; render(); };
+}
+
+function fmtDate(d){
+  if(!d) return '—';
+  const dt = new Date(d);
+  if(isNaN(dt)) return d;
+  return dt.toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'});
+}
+
+function renderRegister(){
+  const t = CURRENT;
+  let html = `<div class="section-title"><div class="num"><span class="material-symbols-outlined">edit_note</span></div><h3>Inscripción</h3></div>`;
+  if(!t){ html += `<div class="empty"><span class="ic"><span class="material-symbols-outlined">warning</span></span>No hay torneo activo para inscribirse.</div>`; $main.innerHTML=html; return; }
+  if(t.status!=='registration'){
+    html += `<div class="empty"><span class="ic"><span class="material-symbols-outlined">lock</span></span>Las inscripciones para <b>${t.name}</b> están cerradas.</div>`;
+    $main.innerHTML = html; return;
+  }
+  if(t.players.length>=t.size){
+    html += `<div class="empty"><span class="ic"><span class="material-symbols-outlined">check_circle</span></span>¡Cupos completos! (${t.size}/${t.size})</div>`;
+    $main.innerHTML = html; return;
+  }
+  html += `<div class="card tight small muted">Propón tu alias, un club y un país. No pueden repetirse entre jugadores, y deben existir en FC26.</div>
+  <label>Tu alias</label>
+  <input id="in-alias" placeholder="Ej: ElCraque22" maxlength="24">
+  <div id="err-alias" class="field-error"></div>
+
+  <label>Club que propones</label>
+  <input id="in-club" list="dl-clubs" placeholder="Ej: Real Madrid" autocomplete="off">
+  <datalist id="dl-clubs">${INDEX.validTeams.clubs.map(c=>`<option value="${c}">`).join('')}</datalist>
+  <div id="err-club" class="field-error"></div>
+
+  <label>País que propones</label>
+  <input id="in-country" list="dl-countries" placeholder="Ej: Argentina" autocomplete="off">
+  <datalist id="dl-countries">${INDEX.validTeams.countries.map(c=>`<option value="${c}">`).join('')}</datalist>
+  <div id="err-country" class="field-error"></div>
+
+  <button class="btn" id="btn-submit" style="margin-top:18px;">Confirmar inscripción</button>
+  <div id="reg-msg" style="margin-top:10px;"></div>
+
+  <div class="section-title"><div class="num">${t.players.length}</div><h3>Inscritos (${t.players.length}/${t.size})</h3></div>
+  <div class="card tight">
+    ${t.players.length? t.players.map(p=>`<div class="list-item"><span class="name">${p.alias}</span><span class="sub">${p.club} · ${p.country}</span></div>`).join('') : '<div class="muted small">Sé el primero en inscribirte.</div>'}
+  </div>`;
+  $main.innerHTML = html;
+  bindNav();
+
+  document.getElementById('btn-submit').onclick = async ()=>{
+    const alias = document.getElementById('in-alias').value.trim();
+    const club = document.getElementById('in-club').value.trim();
+    const country = document.getElementById('in-country').value.trim();
+    document.getElementById('err-alias').textContent='';
+    document.getElementById('err-club').textContent='';
+    document.getElementById('err-country').textContent='';
+    let ok = true;
+    const fresh = await loadTournament(t.id); // re-check latest to avoid race
+    if(!alias){ document.getElementById('err-alias').textContent='Escribe un alias.'; ok=false; }
+    else if(aliasTaken(fresh, alias)){ document.getElementById('err-alias').textContent='Ese alias ya está tomado.'; ok=false; }
+    const clubMatch = findTeamMatch(club,'club');
+    if(!club){ document.getElementById('err-club').textContent='Escribe un club.'; ok=false; }
+    else if(!clubMatch){ document.getElementById('err-club').textContent='Ese club no existe en la lista válida de FC26.'; ok=false; }
+    else if(clubTaken(fresh, club)){ document.getElementById('err-club').textContent='Ese club ya fue propuesto por otro jugador.'; ok=false; }
+    const countryMatch = findTeamMatch(country,'country');
+    if(!country){ document.getElementById('err-country').textContent='Escribe un país.'; ok=false; }
+    else if(!countryMatch){ document.getElementById('err-country').textContent='Ese país no existe en la lista válida de FC26.'; ok=false; }
+    else if(countryTaken(fresh, country)){ document.getElementById('err-country').textContent='Ese país ya fue propuesto por otro jugador.'; ok=false; }
+    if(!ok) return;
+    if(fresh.players.length>=fresh.size){ document.getElementById('reg-msg').innerHTML='<span class="field-error">Los cupos se llenaron justo ahora.</span>'; return; }
+    fresh.players.push({id:uid(), alias, club:clubMatch, country:countryMatch, assignedTeam:null});
+    await saveTournament(fresh);
+    document.getElementById('reg-msg').innerHTML = '<span class="field-ok"><span class="material-symbols-outlined" style="font-size:1em;">check_circle</span> ¡Inscripción confirmada! Nos vemos en la cancha.</span>';
+    setTimeout(()=>render(), 700);
+  };
+}
+
+function bindNav(){
+  $main.querySelectorAll('[data-nav]').forEach(b=> b.onclick = ()=>{ VIEW=b.dataset.nav; render(); });
+}
+
+/* ---------- TOURNAMENT VIEW (equipos, grupos, tabla, goleo, llave) ---------- */
+function renderTournament(){
+  const t = CURRENT;
+  let html = `<div class="section-title"><div class="num"><span class="material-symbols-outlined">emoji_events</span></div><h3>Torneo</h3></div>`;
+  if(!t){ html += `<div class="empty"><span class="ic"><span class="material-symbols-outlined">warning</span></span>No hay torneo activo.</div>`; $main.innerHTML=html; return; }
+
+  const tabs = [['grupos','Grupos'],['tabla','Tabla'],['goleo','Goleo'],['llave','Llave']];
+  html += `<div class="tabs2">${tabs.map(([k,l])=>`<button data-sub="${k}" class="${SUBVIEW_TOURN===k?'active':''}">${l}</button>`).join('')}</div>`;
+  html += `<div id="tourn-sub"></div>`;
+  $main.innerHTML = html;
+  bindNav();
+  $main.querySelectorAll('[data-sub]').forEach(b=> b.onclick=()=>{ SUBVIEW_TOURN=b.dataset.sub; renderTournament(); });
+  const holder = document.getElementById('tourn-sub');
+
+  if(t.status==='registration'){
+    holder.innerHTML = `<div class="empty"><span class="ic"><span class="material-symbols-outlined">hourglass_empty</span></span>Aún en inscripción (${t.players.length}/${t.size}). Los sorteos aparecerán aquí cuando el admin los active.</div>`;
+    return;
+  }
+
+  if(SUBVIEW_TOURN==='grupos') return renderGrupos(holder,t);
+  if(SUBVIEW_TOURN==='tabla') return renderTabla(holder,t);
+  if(SUBVIEW_TOURN==='goleo') return renderGoleo(holder,t);
+  if(SUBVIEW_TOURN==='llave') return renderLlave(holder,t);
+}
+
+function renderGrupos(holder,t){
+  if(!t.groups){ holder.innerHTML = `<div class="empty"><span class="ic"><span class="material-symbols-outlined">casino</span></span>Los grupos aún no se han sorteado.</div>`; return; }
+  let html = '';
+  for(const key in t.groups){
+    html += `<div class="card"><div class="grp-head">Grupo ${key}</div>`;
+    t.groups[key].forEach(id=> html += `<div class="list-item"><span class="name">${playerName(t,id)}</span><span class="sub">${playerTeam(t,id)}</span></div>`);
+    html += `<div style="height:10px"></div>`;
+    (t.groupMatches[key]||[]).forEach(m=>{
+      html += `<div class="match">
+        <span class="side">${playerName(t,m.p1)}</span>
+        <span class="score">
+          ${ADMIN_UNLOCKED ? `<input class="sc" type="number" min="0" data-m="${key}:${m.id}:s1" value="${m.s1??''}">` : `<b>${m.s1??'-'}</b>` }
+          <span class="vs">:</span>
+          ${ADMIN_UNLOCKED ? `<input class="sc" type="number" min="0" data-m="${key}:${m.id}:s2" value="${m.s2??''}">` : `<b>${m.s2??'-'}</b>` }
+        </span>
+        <span class="side right">${playerName(t,m.p2)}</span>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+  if(ADMIN_UNLOCKED){
+    html += `<button class="btn" id="save-scores">Guardar marcadores</button>`;
+  }
+  holder.innerHTML = html;
+  if(ADMIN_UNLOCKED){
+    document.getElementById('save-scores').onclick = async ()=>{
+      const fresh = await loadTournament(t.id);
+      holder.querySelectorAll('input.sc').forEach(inp=>{
+        const [g,mid,field] = inp.dataset.m.split(':');
+        const m = fresh.groupMatches[g].find(x=>x.id===mid);
+        const val = inp.value===''? null : parseInt(inp.value);
+        m[field]=val;
+        m.played = (m.s1!=null && m.s2!=null);
+      });
+      await saveTournament(fresh);
+      CURRENT = fresh;
+      renderTournament();
+    };
+  }
+}
+
+function renderTabla(holder,t){
+  if(!t.groups){ holder.innerHTML=`<div class="empty"><span class="ic"><span class="material-symbols-outlined">bar_chart</span></span>Aún no hay grupos.</div>`; return; }
+  let html='';
+  for(const key in t.groups){
+    const standings = computeStandings(t,key);
+    html += `<div class="grp-head">Grupo ${key}</div><table><thead><tr><th style="text-align:left">Jugador</th><th>PJ</th><th>PG</th><th>PE</th><th>PP</th><th>DG</th><th>Pts</th></tr></thead><tbody>`;
+    standings.forEach((s,i)=>{
+      html += `<tr class="${i<2?'qualify':''}"><td class="tname">${playerName(t,s.id)}</td><td>${s.pj}</td><td>${s.pg}</td><td>${s.pe}</td><td>${s.pp}</td><td>${s.gf-s.gc}</td><td><b>${s.pts}</b></td></tr>`;
+    });
+    html += `</tbody></table>`;
+  }
+  html += `<p class="muted small" style="margin-top:10px;">Resaltados en verde: clasifican a playoffs.</p>`;
+  holder.innerHTML = html;
+}
+
+function renderGoleo(holder,t){
+  const rows = goleoTable(t);
+  let html = `<table><thead><tr><th style="text-align:left">Jugador</th><th>Goles</th></tr></thead><tbody>`;
+  rows.forEach((r,i)=> html += `<tr><td class="tname">${i+1}. ${playerName(t,r.id)}</td><td><b>${r.goals}</b></td></tr>`);
+  html += `</tbody></table>`;
+  holder.innerHTML = html;
+}
+
+function renderLlave(holder,t){
+  if(!t.bracket){ holder.innerHTML = `<div class="empty"><span class="ic"><span class="material-symbols-outlined">account_tree</span></span>La llave aparece cuando termina la fase de grupos.</div>`; return; }
+  let html='';
+  const total = t.bracket.rounds.length + Math.log2(t.bracket.rounds[0].length===0?1:1); // not used, computed below
+  const totalRounds = Math.ceil(Math.log2(t.bracket.rounds[0].length*2));
+  t.bracket.rounds.forEach((round,ri)=>{
+    html += `<div class="bracket-round"><div class="bracket-title">${roundLabel(totalRounds,ri)}</div>`;
+    round.forEach((m,mi)=>{
+      html += `<div class="match">
+        <span class="side">${playerName(t,m.p1)}</span>
+        <span class="score">
+          ${ADMIN_UNLOCKED && !m.played ? `<input class="sc" type="number" min="0" data-bm="${ri}:${mi}:s1" value="${m.s1??''}">` : `<b>${m.s1??'-'}</b>` }
+          <span class="vs">:</span>
+          ${ADMIN_UNLOCKED && !m.played ? `<input class="sc" type="number" min="0" data-bm="${ri}:${mi}:s2" value="${m.s2??''}">` : `<b>${m.s2??'-'}</b>` }
+        </span>
+        <span class="side right">${playerName(t,m.p2)}</span>
+      </div>`;
+    });
+    html += `</div>`;
+  });
+  if(t.status==='finished' && t.champion){
+    html += `<div class="champ-banner card"><div class="cup"><span class="material-symbols-outlined">emoji_events</span></div><h2>${playerName(t,t.champion)}</h2><p>Campeón de ${t.name}</p></div>`;
+  } else if(ADMIN_UNLOCKED){
+    html += `<button class="btn" id="save-bracket">Guardar resultados de llave</button>`;
+  }
+  holder.innerHTML = html;
+  if(ADMIN_UNLOCKED && t.status!=='finished'){
+    document.getElementById('save-bracket').onclick = async ()=>{
+      const fresh = await loadTournament(t.id);
+      holder.querySelectorAll('input.sc').forEach(inp=>{
+        const [ri,mi,field] = inp.dataset.bm.split(':');
+        const m = fresh.bracket.rounds[ri][mi];
+        const val = inp.value===''? null : parseInt(inp.value);
+        m[field]=val;
+        if(m.s1!=null && m.s2!=null && m.s1!==m.s2){ m.played=true; m.winner = m.s1>m.s2? m.p1:m.p2; }
+      });
+      // advance rounds as far as possible
+      let guard=0;
+      while(guard<10){
+        guard++;
+        const before = JSON.stringify(fresh.bracket.rounds.length);
+        tryAdvanceBracket(fresh);
+        if(JSON.stringify(fresh.bracket.rounds.length)===before) break;
+      }
+      await saveTournament(fresh);
+      CURRENT = fresh;
+      if(fresh.status==='finished'){
+        const hist = await loadHistory();
+        hist.push({id:fresh.id, name:fresh.name, champion:playerName(fresh,fresh.champion), date:Date.now(), size:fresh.size});
+        await saveHistory(hist);
+        renderTournament();
+        launchConfetti();
+      } else {
+        renderTournament();
+      }
+    };
+  }
+}
+
+/* ================= ADMIN ================= */
+function renderAdmin(){
+  if(!INDEX.adminPin){
+    $main.innerHTML = `<div class="lock-screen">
+      <div class="ic"><span class="material-symbols-outlined">lock_open</span></div>
+      <h3>Configura tu PIN de administrador</h3>
+      <p class="muted small">Este PIN te permitirá crear torneos, activar sorteos y cargar resultados. Compártelo solo si confías en la persona.</p>
+      <input id="new-pin" placeholder="Crea un PIN (4-6 dígitos)" style="margin-top:14px;text-align:center;letter-spacing:4px;" maxlength="6">
+      <button class="btn" id="set-pin" style="margin-top:12px;">Guardar PIN</button>
+    </div>`;
+    document.getElementById('set-pin').onclick = async ()=>{
+      const pin = document.getElementById('new-pin').value.trim();
+      if(pin.length<4){ alert('El PIN debe tener al menos 4 dígitos.'); return; }
+      INDEX.adminPin = pin;
+      await saveIndex();
+      ADMIN_UNLOCKED = true;
+      renderAdmin();
+    };
+    return;
+  }
+  if(!ADMIN_UNLOCKED){
+    $main.innerHTML = `<div class="lock-screen">
+      <div class="ic"><span class="material-symbols-outlined">lock</span></div>
+      <h3>Acceso de administrador</h3>
+      <input id="pin-try" placeholder="PIN" style="margin-top:14px;text-align:center;letter-spacing:4px;" maxlength="6">
+      <div id="pin-err" class="field-error"></div>
+      <button class="btn" id="try-pin" style="margin-top:12px;">Entrar</button>
+    </div>`;
+    document.getElementById('try-pin').onclick = ()=>{
+      const v = document.getElementById('pin-try').value.trim();
+      if(v===INDEX.adminPin){ ADMIN_UNLOCKED=true; renderAdmin(); }
+      else document.getElementById('pin-err').textContent='PIN incorrecto.';
+    };
+    return;
+  }
+
+  const tabs = [['panel','Panel'],['equipos','Sorteos'],['torneos','Torneos'],['lista','Lista válida']];
+  let html = `<div class="section-title"><div class="num"><span class="material-symbols-outlined">lock</span></div><h3>Administración</h3></div>`;
+  html += `<div class="tabs2">${tabs.map(([k,l])=>`<button data-asub="${k}" class="${SUBVIEW_ADMIN===k?'active':''}">${l}</button>`).join('')}</div>`;
+  html += `<div id="admin-sub"></div>`;
+  $main.innerHTML = html;
+  $main.querySelectorAll('[data-asub]').forEach(b=> b.onclick=()=>{ SUBVIEW_ADMIN=b.dataset.asub; renderAdmin(); });
+  const holder = document.getElementById('admin-sub');
+
+  if(SUBVIEW_ADMIN==='panel') return renderAdminPanel(holder);
+  if(SUBVIEW_ADMIN==='equipos') return renderAdminSorteos(holder);
+  if(SUBVIEW_ADMIN==='torneos') return renderAdminTorneos(holder);
+  if(SUBVIEW_ADMIN==='lista') return renderAdminLista(holder);
+}
+
+function renderAdminPanel(holder){
+  const t = CURRENT;
+  if(!t){ holder.innerHTML = `<div class="empty"><span class="ic"><span class="material-symbols-outlined">inbox</span></span>No hay torneo activo. Ve a "Torneos" para crear uno.</div>`; return; }
+  let html = `<div class="card">
+    <div class="list-item"><span class="name">Torneo activo</span><span>${t.name}</span></div>
+    <div class="list-item"><span class="name">Estado</span><span class="badge on">${statusLabel(t).text}</span></div>
+    <div class="list-item"><span class="name">Inscritos</span><span>${t.players.length}/${t.size}</span></div>
+  </div>`;
+  if(t.status==='registration'){
+    html += `<button class="btn" id="close-reg" ${t.players.length<4?'disabled':''}>Cerrar inscripciones</button>`;
+    if(t.players.length<4) html += `<p class="small muted">Necesitas al menos 4 jugadores inscritos.</p>`;
+  } else {
+    html += `<p class="muted small">Usa la pestaña "Sorteos" para continuar con equipos, asignación y grupos. Los marcadores se cargan desde la pestaña "Torneo".</p>`;
+  }
+  html += `<button class="btn ghost" id="export-active"><span class="material-symbols-outlined" style="font-size:1em;">download</span> Exportar este torneo (.csv)</button>`;
+  html += `<div class="section-title"><div class="num"><span class="material-symbols-outlined">group</span></div><h3>Inscritos</h3></div><div class="card tight">`;
+  html += t.players.length? t.players.map(p=>`<div class="list-item"><span class="name">${p.alias}</span><span class="sub">${p.club} · ${p.country}</span></div>`).join('') : '<div class="muted small">Sin inscritos aún.</div>';
+  html += `</div>`;
+  holder.innerHTML = html;
+  const btn = document.getElementById('close-reg');
+  if(btn) btn.onclick = async ()=>{
+    const fresh = await loadTournament(t.id);
+    fresh.status='closed_reg';
+    await saveTournament(fresh);
+    render();
+  };
+  document.getElementById('export-active').onclick = ()=> exportTournamentCSV(t);
+}
+
+function renderAdminSorteos(holder){
+  const t = CURRENT;
+  if(!t){ holder.innerHTML = `<div class="empty">No hay torneo activo.</div>`; return; }
+  if(t.status==='registration'){ holder.innerHTML = `<div class="empty">Cierra las inscripciones primero (pestaña Panel).</div>`; return; }
+
+  let html = '';
+  if(!t.drawnTeams || t.drawnTeams.length===0){
+    const pool = [];
+    t.players.forEach(p=>{ pool.push({label:p.club,type:'club'}); pool.push({label:p.country,type:'country'}); });
+    html += `<div class="card tight"><b>Paso 1 · Sorteo de equipos</b><p class="small muted">De ${pool.length} equipos propuestos, se sortearán ${t.size} para competir.</p>
+    <button class="btn" id="draw-teams">Iniciar sorteo de equipos</button></div>`;
+    holder.innerHTML = html;
+    document.getElementById('draw-teams').onclick = ()=> runDrawTeams(t, pool, holder);
+    return;
+  }
+
+  if(!t.players.every(p=>p.assignedTeam)){
+    html += `<div class="card tight"><b>Equipos sorteados</b><p class="small">${t.drawnTeams.join(' · ')}</p></div>
+    <div class="card tight"><b>Paso 2 · Asignación jugador ↔ equipo</b><p class="small muted">Cada equipo sorteado se asignará al azar a un jugador.</p>
+    <button class="btn" id="draw-assign">Sortear asignación</button></div>`;
+    holder.innerHTML = html;
+    document.getElementById('draw-assign').onclick = ()=> runDrawAssign(t, holder);
+    return;
+  }
+
+  if(!t.groups){
+    html += `<div class="card tight"><b>Equipos asignados</b>${t.players.map(p=>`<div class="list-item"><span class="name">${p.alias}</span><span class="sub">${p.assignedTeam}</span></div>`).join('')}</div>
+    <div class="card tight"><b>Paso 3 · Sorteo de grupos</b><p class="small muted">Se dividirán los ${t.size} jugadores en grupos de 4.</p>
+    <button class="btn" id="draw-groups">Sortear grupos</button></div>`;
+    holder.innerHTML = html;
+    document.getElementById('draw-groups').onclick = ()=> runDrawGroups(t, holder);
+    return;
+  }
+
+  if(t.status==='groups' && allGroupMatchesPlayed(t)){
+    html += `<div class="card tight"><b>Fase de grupos completa</b><p class="small muted">Todos los partidos de grupo tienen marcador. Genera la llave de playoffs.</p>
+    <button class="btn" id="build-bracket">Generar llave de playoffs</button></div>`;
+    holder.innerHTML = html;
+    document.getElementById('build-bracket').onclick = async ()=>{
+      const fresh = await loadTournament(t.id);
+      buildBracketFromGroups(fresh);
+      await saveTournament(fresh);
+      CURRENT = fresh;
+      SUBVIEW_TOURN='llave'; VIEW='tournament'; render();
+    };
+    return;
+  }
+
+  holder.innerHTML = `<div class="empty"><span class="material-symbols-outlined">check_circle</span> Sorteos completos. Carga los marcadores desde la pestaña <b>Torneo</b>.</div>`;
+}
+
+async function runDrawTeams(t, pool, holder){
+  holder.innerHTML = `<div class="card"><b>Sorteando equipos…</b><div id="slots" style="margin-top:12px;"></div></div>`;
+  const slotsEl = document.getElementById('slots');
+  const chosen = shuffle(pool).slice(0, t.size);
+  for(let i=0;i<chosen.length;i++){
+    const div = document.createElement('div');
+    div.className='draw-slot rolling';
+    div.textContent='???';
+    slotsEl.appendChild(div);
+    let ticks=0;
+    await new Promise(res=>{
+      const iv = setInterval(()=>{
+        div.textContent = shuffle(pool)[0].label;
+        ticks++;
+        if(ticks>8){ clearInterval(iv); div.textContent=chosen[i].label; div.className='draw-slot landed'; res(); }
+      },70);
+    });
+  }
+  const fresh = await loadTournament(t.id);
+  fresh.drawnTeams = chosen.map(c=>c.label);
+  fresh.status='drawn';
+  await saveTournament(fresh);
+  CURRENT = fresh;
+  setTimeout(()=>renderAdmin(), 500);
+}
+
+async function runDrawAssign(t, holder){
+  holder.innerHTML = `<div class="card"><b>Asignando equipos…</b><div id="flips" style="margin-top:12px;"></div></div>`;
+  const flipsEl = document.getElementById('flips');
+  const teams = shuffle(t.drawnTeams);
+  const players = t.players;
+  const assignment = {};
+  players.forEach((p,i)=> assignment[p.id]=teams[i]);
+  for(const p of players){
+    const card = document.createElement('div');
+    card.className='flip-card';
+    card.innerHTML = `<div class="alias">${p.alias}</div><div class="team">${assignment[p.id]}</div>`;
+    flipsEl.appendChild(card);
+    await new Promise(r=>setTimeout(r,120));
+    card.classList.add('revealed');
+    await new Promise(r=>setTimeout(r,280));
+  }
+  const fresh = await loadTournament(t.id);
+  fresh.players.forEach(p=> p.assignedTeam = assignment[p.id]);
+  await saveTournament(fresh);
+  CURRENT = fresh;
+  setTimeout(()=>renderAdmin(), 500);
+}
+
+async function runDrawGroups(t, holder){
+  const numGroups = t.size/4;
+  const letters='ABCDEFGH'.slice(0,numGroups);
+  holder.innerHTML = `<div class="card"><b>Formando grupos…</b><div class="group-cols" id="gcols" style="flex-wrap:wrap;margin-top:12px;"></div></div>`;
+  const gcols = document.getElementById('gcols');
+  const colEls = {};
+  [...letters].forEach(L=>{
+    const col = document.createElement('div'); col.className='group-col'; col.style.minWidth='120px';
+    col.innerHTML = `<h4>Grupo ${L}</h4><div class="slots" id="col-${L}"></div>`;
+    gcols.appendChild(col); colEls[L]=document.getElementById('col-'+L);
+  });
+  const shuffled = shuffle(t.players.map(p=>p.id));
+  const groups = {}; letters.split('').forEach(L=>groups[L]=[]);
+  for(let i=0;i<shuffled.length;i++){
+    const L = letters[i % letters.length];
+    groups[L].push(shuffled[i]);
+    const slot = document.createElement('div'); slot.className='slot'; slot.textContent = playerName(t, shuffled[i]);
+    colEls[L].appendChild(slot);
+    await new Promise(r=>setTimeout(r,220));
+    slot.classList.add('in');
+  }
+  const fresh = await loadTournament(t.id);
+  fresh.groups = groups;
+  const groupMatches = {};
+  for(const key in groups) groupMatches[key] = roundRobinPairs(groups[key]).map(([p1,p2],i)=>({id:key+'-'+i,p1,p2,s1:null,s2:null,played:false}));
+  fresh.groupMatches = groupMatches;
+  fresh.status='groups';
+  await saveTournament(fresh);
+  CURRENT = fresh;
+  setTimeout(()=>renderAdmin(), 600);
+}
+
+function renderAdminTorneos(holder){
+  let html = `<div class="card tight">
+    <b>Crear nuevo torneo</b>
+    <label>Nombre</label><input id="nt-name" placeholder="Ej: Copa Verano FC27">
+    <label>Formato</label>
+    <select id="nt-size"><option value="8">8 equipos</option><option value="16">16 equipos</option><option value="32">32 equipos</option></select>
+    <label>Fecha del torneo</label><input id="nt-date" type="date">
+    <label>Cierre de inscripción</label><input id="nt-deadline" type="date">
+    <button class="btn" id="create-t" style="margin-top:14px;">Crear torneo</button>
+  </div>`;
+  html += `<div class="section-title"><div class="num"><span class="material-symbols-outlined">list_alt</span></div><h3>Torneos existentes</h3></div>`;
+  if(INDEX.tournaments.length===0){ html += `<div class="empty small">Ningún torneo creado todavía.</div>`; }
+  else {
+    html += `<div class="card tight">`;
+    INDEX.tournaments.forEach(tt=>{
+      const active = INDEX.activeId===tt.id;
+      html += `<div class="list-item">
+        <span class="name">${tt.name} ${active?'<span class=\"badge on\">activo</span>':''}</span>
+        <span class="sub" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+          ${!active?`<button class="btn small ghost" data-act="activate" data-id="${tt.id}">Activar</button>`:''}
+          <button class="btn small ghost" data-act="export" data-id="${tt.id}"><span class="material-symbols-outlined" style="font-size:1em;">download</span></button>
+          <button class="btn small danger" data-act="delete" data-id="${tt.id}">Eliminar</button>
+        </span>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+  holder.innerHTML = html;
+
+  document.getElementById('create-t').onclick = async ()=>{
+    const name = document.getElementById('nt-name').value.trim() || 'Torneo sin nombre';
+    const size = parseInt(document.getElementById('nt-size').value);
+    const eventDate = document.getElementById('nt-date').value;
+    const regDeadline = document.getElementById('nt-deadline').value;
+    const t = blankTournament(name,size,eventDate,regDeadline);
+    await saveTournament(t);
+    INDEX.tournaments.push({id:t.id,name,size,createdAt:Date.now()});
+    INDEX.activeId = t.id;
+    await saveIndex();
+    CURRENT = t;
+    attachTournamentListener(t.id);
+    renderAdmin();
+  };
+  holder.querySelectorAll('[data-act="export"]').forEach(b=> b.onclick = async ()=>{
+    const tt = await loadTournament(b.dataset.id);
+    if(tt) exportTournamentCSV(tt);
+  });
+  holder.querySelectorAll('[data-act="activate"]').forEach(b=> b.onclick = async ()=>{
+    INDEX.activeId = b.dataset.id;
+    await saveIndex();
+    CURRENT = await loadTournament(INDEX.activeId);
+    attachTournamentListener(INDEX.activeId);
+    renderAdmin();
+  });
+  holder.querySelectorAll('[data-act="delete"]').forEach(b=> b.onclick = async ()=>{
+    if(!confirm('¿Eliminar este torneo y todos sus datos? Esta acción no se puede deshacer.')) return;
+    INDEX.tournaments = INDEX.tournaments.filter(x=>x.id!==b.dataset.id);
+    if(INDEX.activeId===b.dataset.id) INDEX.activeId = INDEX.tournaments[0]?.id || null;
+    await saveIndex();
+    await fDelete('tournaments', b.dataset.id);
+    CURRENT = INDEX.activeId ? await loadTournament(INDEX.activeId) : null;
+    attachTournamentListener(INDEX.activeId);
+    renderAdmin();
+  });
+}
+
+function renderAdminLista(holder){
+  let html = `<div class="card tight"><b>Clubes válidos</b><p class="small muted">Edita separando por comas.</p>
+    <textarea id="edit-clubs" style="width:100%;min-height:110px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--white);padding:10px;font-family:'Barlow Semi Condensed';">${INDEX.validTeams.clubs.join(', ')}</textarea>
+  </div>
+  <div class="card tight"><b>Países válidos</b>
+    <textarea id="edit-countries" style="width:100%;min-height:110px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--white);padding:10px;font-family:'Barlow Semi Condensed';">${INDEX.validTeams.countries.join(', ')}</textarea>
+  </div>
+  <button class="btn" id="save-list">Guardar lista</button>`;
+  holder.innerHTML = html;
+  document.getElementById('save-list').onclick = async ()=>{
+    INDEX.validTeams.clubs = document.getElementById('edit-clubs').value.split(',').map(s=>s.trim()).filter(Boolean);
+    INDEX.validTeams.countries = document.getElementById('edit-countries').value.split(',').map(s=>s.trim()).filter(Boolean);
+    await saveIndex();
+    alert('Lista actualizada.');
+  };
+}
+
+/* ================= EXPORT CSV ================= */
+function csvEsc(v){
+  v = (v===null||v===undefined) ? '' : String(v);
+  if(/[",\n;]/.test(v)) return '"'+v.replace(/"/g,'""')+'"';
+  return v;
+}
+function csvRow(arr){ return arr.map(csvEsc).join(',') + '\r\n'; }
+
+function buildTournamentCSV(t){
+  let out = '';
+  out += 'INFORMACIÓN GENERAL\r\n';
+  out += csvRow(['Nombre','Formato','Fecha del torneo','Cierre de inscripción','Estado','Inscritos']);
+  out += csvRow([t.name, t.size+' equipos', fmtDate(t.eventDate), fmtDate(t.regDeadline), statusLabel(t).text, t.players.length+'/'+t.size]);
+  out += '\r\n';
+
+  out += 'INSCRITOS\r\n';
+  out += csvRow(['Alias','Club propuesto','País propuesto','Equipo asignado']);
+  t.players.forEach(p=> out += csvRow([p.alias, p.club, p.country, p.assignedTeam||'']));
+  out += '\r\n';
+
+  if(t.drawnTeams && t.drawnTeams.length){
+    out += 'EQUIPOS SORTEADOS\r\n';
+    out += csvRow(['#','Equipo']);
+    t.drawnTeams.forEach((team,i)=> out += csvRow([i+1, team]));
+    out += '\r\n';
+  }
+
+  if(t.groups){
+    out += 'GRUPOS\r\n';
+    out += csvRow(['Grupo','Jugador','Equipo']);
+    for(const key in t.groups){
+      t.groups[key].forEach(id=> out += csvRow([key, playerName(t,id), playerTeam(t,id)]));
+    }
+    out += '\r\n';
+
+    out += 'PARTIDOS DE GRUPO\r\n';
+    out += csvRow(['Grupo','Jugador 1','Goles 1','Goles 2','Jugador 2','Jugado']);
+    for(const key in t.groupMatches){
+      t.groupMatches[key].forEach(m=> out += csvRow([key, playerName(t,m.p1), m.s1??'', m.s2??'', playerName(t,m.p2), m.played?'Sí':'No']));
+    }
+    out += '\r\n';
+
+    out += 'TABLA DE POSICIONES\r\n';
+    out += csvRow(['Grupo','Jugador','PJ','PG','PE','PP','DG','Pts','Clasifica']);
+    for(const key in t.groups){
+      const standings = computeStandings(t,key);
+      standings.forEach((s,i)=> out += csvRow([key, playerName(t,s.id), s.pj, s.pg, s.pe, s.pp, s.gf-s.gc, s.pts, i<2?'Sí':'No']));
+    }
+    out += '\r\n';
+  }
+
+  out += 'TABLA DE GOLEO\r\n';
+  out += csvRow(['#','Jugador','Goles']);
+  goleoTable(t).forEach((r,i)=> out += csvRow([i+1, playerName(t,r.id), r.goals]));
+  out += '\r\n';
+
+  if(t.bracket){
+    out += 'LLAVE DE PLAYOFFS\r\n';
+    out += csvRow(['Ronda','Jugador 1','Goles 1','Goles 2','Jugador 2','Ganador']);
+    const totalRounds = t.bracket.rounds.length;
+    t.bracket.rounds.forEach((round,ri)=>{
+      round.forEach(m=> out += csvRow([roundLabel(totalRounds,ri), playerName(t,m.p1), m.s1??'', m.s2??'', playerName(t,m.p2), m.winner?playerName(t,m.winner):'']));
+    });
+    out += '\r\n';
+  }
+
+  if(t.champion){
+    out += 'CAMPEÓN\r\n';
+    out += csvRow([playerName(t,t.champion)]);
+  }
+
+  return out;
+}
+
+function exportTournamentCSV(t){
+  const csv = '\uFEFF' + buildTournamentCSV(t); // BOM para tildes correctas en Excel
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const safeName = t.name.normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9]+/g,'-').toLowerCase();
+  a.href = url; a.download = `torneo-${safeName||t.id}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 2000);
+}
+
+/* ================= CONFETTI ================= */
+function launchConfetti(){
+  const canvas = document.getElementById('confetti-canvas');
+  canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+  const ctx = canvas.getContext('2d');
+  const colors = ['#c6ff3d','#f3f6ef','#8fcc1f','#5cb8ff'];
+  const pieces = Array.from({length:120}).map(()=>({
+    x: Math.random()*canvas.width, y: -20-Math.random()*canvas.height*.5,
+    r: 4+Math.random()*5, c: colors[Math.floor(Math.random()*colors.length)],
+    vy: 2+Math.random()*3, vx: -1.5+Math.random()*3, rot: Math.random()*360, vr: -6+Math.random()*12
+  }));
+  let frame=0;
+  function tick(){
+    frame++;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    pieces.forEach(p=>{
+      p.x+=p.vx; p.y+=p.vy; p.rot+=p.vr;
+      ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot*Math.PI/180);
+      ctx.fillStyle=p.c; ctx.fillRect(-p.r/2,-p.r/2,p.r,p.r*1.6);
+      ctx.restore();
+    });
+    if(frame<220) requestAnimationFrame(tick); else ctx.clearRect(0,0,canvas.width,canvas.height);
+  }
+  tick();
+}
+
+/* ================= INIT (tiempo real con Firestore) ================= */
+document.querySelectorAll('.tabbar button').forEach(b=>{
+  b.onclick = ()=>{ VIEW=b.dataset.view; render(); };
+});
+
+async function boot(){
+  await loadIndex();
+  if(INDEX.activeId) CURRENT = await loadTournament(INDEX.activeId);
+  render();
+  attachTournamentListener(INDEX.activeId);
+  attachIndexListener();
+}
+boot();
