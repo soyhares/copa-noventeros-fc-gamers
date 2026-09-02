@@ -5,8 +5,9 @@ import {
   getFirestore, doc, getDoc, setDoc, deleteDoc, onSnapshot
 } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
 
-const fbApp = initializeApp(firebaseConfig);
-const db = getFirestore(fbApp);
+let db = null;
+try{ db = getFirestore(initializeApp(firebaseConfig)); }
+catch(e){ /* boot() lo detecta y muestra el mensaje */ }
 
 async function fGet(col, id){
   try{ const snap = await getDoc(doc(db,col,id)); return snap.exists() ? snap.data() : null; }
@@ -36,6 +37,9 @@ let SUBVIEW_TOURN = 'grupos';
 let unsubTournament = null;
 
 const norm = s => (s||'').trim().toLowerCase();
+// Todo se pinta con innerHTML: sin esto un alias con < o comillas rompe el render.
+// Solo para HTML — nunca dentro de playerName/playerTeam, que también alimentan el CSV.
+const esc = s => String(s??'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function isTypingNow(){
   const tag = document.activeElement && document.activeElement.tagName;
   return tag==='INPUT' || tag==='TEXTAREA' || tag==='SELECT';
@@ -98,8 +102,18 @@ function blankTournament(name, size, eventDate, regDeadline){
     groups:null,           // { A:[playerId,...], B:[...] }
     groupMatches:null,     // { A:[{id,p1,p2,s1,s2,played}], B:[...] }
     bracket:null,          // { rounds: [ [{p1,p2,s1,s2,played,winner}] ] }
+    waitlist:[],           // inscritos que quedaron fuera al ajustar el formato
     champion:null,
   };
+}
+
+// La llave toma 2 clasificados por grupo, así que el torneo necesita al menos size/2
+// jugadores o buildBracketFromGroups revienta. Si no llegaron todos, bajamos el formato
+// al que sí calza en vez de dejar el torneo atascado.
+const FORMATOS = [8,16,32];
+function formatoAjustado(nPlayers, size){
+  const posibles = FORMATOS.filter(f => f<=size && f<=nPlayers);
+  return posibles.length ? Math.max(...posibles) : null;
 }
 
 function shuffle(arr){
@@ -113,9 +127,6 @@ function findTeamMatch(value, type){
   const list = type==='club' ? INDEX.validTeams.clubs : INDEX.validTeams.countries;
   return list.find(t => norm(t)===norm(value));
 }
-function isTaken(t, field){
-  return t.players.some(p => norm(p[field]) === norm(arguments[2]));
-}
 function aliasTaken(t, alias){ return t.players.some(p=>norm(p.alias)===norm(alias)); }
 function clubTaken(t, club){ return t.players.some(p=>norm(p.club)===norm(club)); }
 function countryTaken(t, country){ return t.players.some(p=>norm(p.country)===norm(country)); }
@@ -125,20 +136,6 @@ function roundRobinPairs(ids){
   const pairs=[];
   for(let i=0;i<ids.length;i++) for(let j=i+1;j<ids.length;j++) pairs.push([ids[i],ids[j]]);
   return pairs;
-}
-function makeGroupsAndMatches(t){
-  const numGroups = t.size/4;
-  const shuffled = shuffle(t.players.map(p=>p.id));
-  const groups = {};
-  const letters = 'ABCDEFGH';
-  for(let g=0; g<numGroups; g++){
-    groups[letters[g]] = shuffled.slice(g*4, g*4+4);
-  }
-  const groupMatches = {};
-  for(const key in groups){
-    groupMatches[key] = roundRobinPairs(groups[key]).map(([p1,p2],i)=>({id:key+'-'+i,p1,p2,s1:null,s2:null,played:false}));
-  }
-  t.groups = groups; t.groupMatches = groupMatches; t.status='groups';
 }
 function playerName(t,id){ const p=t.players.find(x=>x.id===id); return p? p.alias : '—'; }
 function playerTeam(t,id){ const p=t.players.find(x=>x.id===id); return p? p.assignedTeam : '—'; }
@@ -190,6 +187,7 @@ function tryAdvanceBracket(t){
   }
   rounds.push(next);
 }
+function totalRoundsOf(bracket){ return Math.ceil(Math.log2(bracket.rounds[0].length*2)); }
 function roundLabel(totalRounds, idx){
   const remaining = totalRounds-idx;
   if(remaining===1) return 'Final';
@@ -206,7 +204,7 @@ function setActiveTab(){
 }
 function statusLabel(t){
   if(!t) return { text:'Sin torneo', cls:'' };
-  const map = {registration:'Inscripciones abiertas', drawn:'Equipos sorteados', groups:'Fase de grupos', playoffs:'Playoffs', finished:'Finalizado'};
+  const map = {registration:'Inscripciones abiertas', closed_reg:'Inscripciones cerradas', drawn:'Equipos sorteados', groups:'Fase de grupos', playoffs:'Playoffs', finished:'Finalizado'};
   return { text: map[t.status]||t.status, cls: t.status==='registration'?'live':'' };
 }
 
@@ -248,7 +246,7 @@ function renderHome(){
     }
 
     if(t.status==='finished' && t.champion){
-      html += `<div class="champ-banner card"><div class="cup"><span class="material-symbols-outlined">emoji_events</span></div><h2>${playerName(t,t.champion)}</h2><p>Campeón de ${t.name}</p></div>`;
+      html += `<div class="champ-banner card"><div class="cup"><span class="material-symbols-outlined">emoji_events</span></div><h2>${esc(playerName(t,t.champion))}</h2><p>Campeón de ${esc(t.name)}</p></div>`;
     }
   }
 
@@ -274,7 +272,7 @@ async function showHistory(){
   else {
     html += `<div class="card">`;
     hist.slice().reverse().forEach(h=>{
-      html += `<div class="hist-item"><b>${h.name}</b><br><span class="muted small">Campeón: ${h.champion} · ${fmtDate(h.date)} · ${h.size} equipos</span></div>`;
+      html += `<div class="hist-item"><b>${esc(h.name)}</b><br><span class="muted small">Campeón: ${esc(h.champion)} · ${fmtDate(h.date)} · ${h.size} equipos</span></div>`;
     });
     html += `</div>`;
   }
@@ -295,7 +293,7 @@ function renderRegister(){
   let html = `<div class="section-title"><div class="num"><span class="material-symbols-outlined">edit_note</span></div><h3>Inscripción</h3></div>`;
   if(!t){ html += `<div class="empty"><span class="ic"><span class="material-symbols-outlined">warning</span></span>No hay torneo activo para inscribirse.</div>`; $main.innerHTML=html; return; }
   if(t.status!=='registration'){
-    html += `<div class="empty"><span class="ic"><span class="material-symbols-outlined">lock</span></span>Las inscripciones para <b>${t.name}</b> están cerradas.</div>`;
+    html += `<div class="empty"><span class="ic"><span class="material-symbols-outlined">lock</span></span>Las inscripciones para <b>${esc(t.name)}</b> están cerradas.</div>`;
     $main.innerHTML = html; return;
   }
   if(t.players.length>=t.size){
@@ -309,12 +307,12 @@ function renderRegister(){
 
   <label>Club que propones</label>
   <input id="in-club" list="dl-clubs" placeholder="Ej: Real Madrid" autocomplete="off">
-  <datalist id="dl-clubs">${INDEX.validTeams.clubs.map(c=>`<option value="${c}">`).join('')}</datalist>
+  <datalist id="dl-clubs">${INDEX.validTeams.clubs.map(c=>`<option value="${esc(c)}">`).join('')}</datalist>
   <div id="err-club" class="field-error"></div>
 
   <label>País que propones</label>
   <input id="in-country" list="dl-countries" placeholder="Ej: Argentina" autocomplete="off">
-  <datalist id="dl-countries">${INDEX.validTeams.countries.map(c=>`<option value="${c}">`).join('')}</datalist>
+  <datalist id="dl-countries">${INDEX.validTeams.countries.map(c=>`<option value="${esc(c)}">`).join('')}</datalist>
   <div id="err-country" class="field-error"></div>
 
   <button class="btn" id="btn-submit" style="margin-top:18px;">Confirmar inscripción</button>
@@ -322,7 +320,7 @@ function renderRegister(){
 
   <div class="section-title"><div class="num">${t.players.length}</div><h3>Inscritos (${t.players.length}/${t.size})</h3></div>
   <div class="card tight">
-    ${t.players.length? t.players.map(p=>`<div class="list-item"><span class="name">${p.alias}</span><span class="sub">${p.club} · ${p.country}</span></div>`).join('') : '<div class="muted small">Sé el primero en inscribirte.</div>'}
+    ${t.players.length? t.players.map(p=>`<div class="list-item"><span class="name">${esc(p.alias)}</span><span class="sub">${esc(p.club)} · ${esc(p.country)}</span></div>`).join('') : '<div class="muted small">Sé el primero en inscribirte.</div>'}
   </div>`;
   $main.innerHTML = html;
   bindNav();
@@ -389,17 +387,17 @@ function renderGrupos(holder,t){
   let html = '';
   for(const key in t.groups){
     html += `<div class="card"><div class="grp-head">Grupo ${key}</div>`;
-    t.groups[key].forEach(id=> html += `<div class="list-item"><span class="name">${playerName(t,id)}</span><span class="sub">${playerTeam(t,id)}</span></div>`);
+    t.groups[key].forEach(id=> html += `<div class="list-item"><span class="name">${esc(playerName(t,id))}</span><span class="sub">${esc(playerTeam(t,id))}</span></div>`);
     html += `<div style="height:10px"></div>`;
     (t.groupMatches[key]||[]).forEach(m=>{
       html += `<div class="match">
-        <span class="side">${playerName(t,m.p1)}</span>
+        <span class="side">${esc(playerName(t,m.p1))}</span>
         <span class="score">
           ${ADMIN_UNLOCKED ? `<input class="sc" type="number" min="0" data-m="${key}:${m.id}:s1" value="${m.s1??''}">` : `<b>${m.s1??'-'}</b>` }
           <span class="vs">:</span>
           ${ADMIN_UNLOCKED ? `<input class="sc" type="number" min="0" data-m="${key}:${m.id}:s2" value="${m.s2??''}">` : `<b>${m.s2??'-'}</b>` }
         </span>
-        <span class="side right">${playerName(t,m.p2)}</span>
+        <span class="side right">${esc(playerName(t,m.p2))}</span>
       </div>`;
     });
     html += `</div>`;
@@ -432,7 +430,7 @@ function renderTabla(holder,t){
     const standings = computeStandings(t,key);
     html += `<div class="grp-head">Grupo ${key}</div><table><thead><tr><th style="text-align:left">Jugador</th><th>PJ</th><th>PG</th><th>PE</th><th>PP</th><th>DG</th><th>Pts</th></tr></thead><tbody>`;
     standings.forEach((s,i)=>{
-      html += `<tr class="${i<2?'qualify':''}"><td class="tname">${playerName(t,s.id)}</td><td>${s.pj}</td><td>${s.pg}</td><td>${s.pe}</td><td>${s.pp}</td><td>${s.gf-s.gc}</td><td><b>${s.pts}</b></td></tr>`;
+      html += `<tr class="${i<2?'qualify':''}"><td class="tname">${esc(playerName(t,s.id))}</td><td>${s.pj}</td><td>${s.pg}</td><td>${s.pe}</td><td>${s.pp}</td><td>${s.gf-s.gc}</td><td><b>${s.pts}</b></td></tr>`;
     });
     html += `</tbody></table>`;
   }
@@ -443,7 +441,7 @@ function renderTabla(holder,t){
 function renderGoleo(holder,t){
   const rows = goleoTable(t);
   let html = `<table><thead><tr><th style="text-align:left">Jugador</th><th>Goles</th></tr></thead><tbody>`;
-  rows.forEach((r,i)=> html += `<tr><td class="tname">${i+1}. ${playerName(t,r.id)}</td><td><b>${r.goals}</b></td></tr>`);
+  rows.forEach((r,i)=> html += `<tr><td class="tname">${i+1}. ${esc(playerName(t,r.id))}</td><td><b>${r.goals}</b></td></tr>`);
   html += `</tbody></table>`;
   holder.innerHTML = html;
 }
@@ -451,27 +449,26 @@ function renderGoleo(holder,t){
 function renderLlave(holder,t){
   if(!t.bracket){ holder.innerHTML = `<div class="empty"><span class="ic"><span class="material-symbols-outlined">account_tree</span></span>La llave aparece cuando termina la fase de grupos.</div>`; return; }
   let html='';
-  const total = t.bracket.rounds.length + Math.log2(t.bracket.rounds[0].length===0?1:1); // not used, computed below
-  const totalRounds = Math.ceil(Math.log2(t.bracket.rounds[0].length*2));
+  const totalRounds = totalRoundsOf(t.bracket);
   t.bracket.rounds.forEach((round,ri)=>{
     html += `<div class="bracket-round"><div class="bracket-title">${roundLabel(totalRounds,ri)}</div>`;
     round.forEach((m,mi)=>{
       html += `<div class="match">
-        <span class="side">${playerName(t,m.p1)}</span>
+        <span class="side">${esc(playerName(t,m.p1))}</span>
         <span class="score">
           ${ADMIN_UNLOCKED && !m.played ? `<input class="sc" type="number" min="0" data-bm="${ri}:${mi}:s1" value="${m.s1??''}">` : `<b>${m.s1??'-'}</b>` }
           <span class="vs">:</span>
           ${ADMIN_UNLOCKED && !m.played ? `<input class="sc" type="number" min="0" data-bm="${ri}:${mi}:s2" value="${m.s2??''}">` : `<b>${m.s2??'-'}</b>` }
         </span>
-        <span class="side right">${playerName(t,m.p2)}</span>
+        <span class="side right">${esc(playerName(t,m.p2))}</span>
       </div>`;
     });
     html += `</div>`;
   });
   if(t.status==='finished' && t.champion){
-    html += `<div class="champ-banner card"><div class="cup"><span class="material-symbols-outlined">emoji_events</span></div><h2>${playerName(t,t.champion)}</h2><p>Campeón de ${t.name}</p></div>`;
+    html += `<div class="champ-banner card"><div class="cup"><span class="material-symbols-outlined">emoji_events</span></div><h2>${esc(playerName(t,t.champion))}</h2><p>Campeón de ${esc(t.name)}</p></div>`;
   } else if(ADMIN_UNLOCKED){
-    html += `<button class="btn" id="save-bracket">Guardar resultados de llave</button>`;
+    html += `<button class="btn" id="save-bracket">Guardar resultados de llave</button><div id="bracket-msg" style="margin-top:10px;"></div>`;
   }
   holder.innerHTML = html;
   if(ADMIN_UNLOCKED && t.status!=='finished'){
@@ -480,9 +477,18 @@ function renderLlave(holder,t){
       holder.querySelectorAll('input.sc').forEach(inp=>{
         const [ri,mi,field] = inp.dataset.bm.split(':');
         const m = fresh.bracket.rounds[ri][mi];
-        const val = inp.value===''? null : parseInt(inp.value);
-        m[field]=val;
-        if(m.s1!=null && m.s2!=null && m.s1!==m.s2){ m.played=true; m.winner = m.s1>m.s2? m.p1:m.p2; }
+        m[field] = inp.value===''? null : parseInt(inp.value);
+      });
+      // Un empate en playoffs no puede resolverse solo: antes se descartaba en silencio
+      // y el botón parecía muerto.
+      const empatados = fresh.bracket.rounds.flat().filter(m=> m.s1!=null && m.s2!=null && m.s1===m.s2);
+      if(empatados.length){
+        document.getElementById('bracket-msg').innerHTML =
+          '<span class="field-error">En playoffs no puede haber empate: define un ganador (tiempo extra o penales).</span>';
+        return;
+      }
+      fresh.bracket.rounds.flat().forEach(m=>{
+        if(m.s1!=null && m.s2!=null){ m.played=true; m.winner = m.s1>m.s2? m.p1:m.p2; }
       });
       // advance rounds as far as possible
       let guard=0;
@@ -561,24 +567,46 @@ function renderAdminPanel(holder){
   const t = CURRENT;
   if(!t){ holder.innerHTML = `<div class="empty"><span class="ic"><span class="material-symbols-outlined">inbox</span></span>No hay torneo activo. Ve a "Torneos" para crear uno.</div>`; return; }
   let html = `<div class="card">
-    <div class="list-item"><span class="name">Torneo activo</span><span>${t.name}</span></div>
+    <div class="list-item"><span class="name">Torneo activo</span><span>${esc(t.name)}</span></div>
     <div class="list-item"><span class="name">Estado</span><span class="badge on">${statusLabel(t).text}</span></div>
     <div class="list-item"><span class="name">Inscritos</span><span>${t.players.length}/${t.size}</span></div>
   </div>`;
   if(t.status==='registration'){
-    html += `<button class="btn" id="close-reg" ${t.players.length<4?'disabled':''}>Cerrar inscripciones</button>`;
-    if(t.players.length<4) html += `<p class="small muted">Necesitas al menos 4 jugadores inscritos.</p>`;
+    const ajuste = formatoAjustado(t.players.length, t.size);
+    html += `<button class="btn" id="close-reg" ${ajuste?'':'disabled'}>Cerrar inscripciones</button>`;
+    if(!ajuste) html += `<p class="small muted">Necesitas al menos 8 jugadores inscritos.</p>`;
+    else if(ajuste !== t.size){
+      const fuera = t.players.length - ajuste;
+      html += `<p class="small muted">Con ${t.players.length} inscritos el torneo se ajustará a <b>${ajuste} equipos</b>`
+        + (fuera? ` y ${fuera} ${fuera>1?'quedarán':'quedará'} como ${fuera>1?'suplentes':'suplente'}` : '') + `.</p>`;
+    }
   } else {
     html += `<p class="muted small">Usa la pestaña "Sorteos" para continuar con equipos, asignación y grupos. Los marcadores se cargan desde la pestaña "Torneo".</p>`;
   }
   html += `<button class="btn ghost" id="export-active"><span class="material-symbols-outlined" style="font-size:1em;">download</span> Exportar este torneo (.csv)</button>`;
   html += `<div class="section-title"><div class="num"><span class="material-symbols-outlined">group</span></div><h3>Inscritos</h3></div><div class="card tight">`;
-  html += t.players.length? t.players.map(p=>`<div class="list-item"><span class="name">${p.alias}</span><span class="sub">${p.club} · ${p.country}</span></div>`).join('') : '<div class="muted small">Sin inscritos aún.</div>';
+  html += t.players.length? t.players.map(p=>`<div class="list-item"><span class="name">${esc(p.alias)}</span><span class="sub">${esc(p.club)} · ${esc(p.country)}</span></div>`).join('') : '<div class="muted small">Sin inscritos aún.</div>';
   html += `</div>`;
+  if(t.waitlist && t.waitlist.length){
+    html += `<div class="section-title"><div class="num">${t.waitlist.length}</div><h3>Suplentes</h3></div>
+      <div class="card tight"><p class="small muted">Quedaron fuera al ajustar el formato (por orden de inscripción).</p>`;
+    html += t.waitlist.map(p=>`<div class="list-item"><span class="name">${esc(p.alias)}</span><span class="sub">${esc(p.club)} · ${esc(p.country)}</span></div>`).join('');
+    html += `</div>`;
+  }
   holder.innerHTML = html;
   const btn = document.getElementById('close-reg');
   if(btn) btn.onclick = async ()=>{
     const fresh = await loadTournament(t.id);
+    const nuevo = formatoAjustado(fresh.players.length, fresh.size);
+    if(!nuevo){ alert('Necesitas al menos 8 jugadores inscritos para cerrar.'); return; }
+    if(nuevo !== fresh.size || fresh.players.length > nuevo){
+      const fuera = fresh.players.length - nuevo;
+      const cola = fuera ? ` y ${fuera} ${fuera>1?'jugadores quedan':'jugador queda'} como ${fuera>1?'suplentes':'suplente'}` : '';
+      if(!confirm(`${fresh.players.length} inscritos: el torneo se ajusta a ${nuevo} equipos${cola}. ¿Continuar?`)) return;
+      fresh.waitlist = [...(fresh.waitlist||[]), ...fresh.players.slice(nuevo)];
+      fresh.players = fresh.players.slice(0, nuevo);
+      fresh.size = nuevo;
+    }
     fresh.status='closed_reg';
     await saveTournament(fresh);
     render();
@@ -603,7 +631,7 @@ function renderAdminSorteos(holder){
   }
 
   if(!t.players.every(p=>p.assignedTeam)){
-    html += `<div class="card tight"><b>Equipos sorteados</b><p class="small">${t.drawnTeams.join(' · ')}</p></div>
+    html += `<div class="card tight"><b>Equipos sorteados</b><p class="small">${esc(t.drawnTeams.join(' · '))}</p></div>
     <div class="card tight"><b>Paso 2 · Asignación jugador ↔ equipo</b><p class="small muted">Cada equipo sorteado se asignará al azar a un jugador.</p>
     <button class="btn" id="draw-assign">Sortear asignación</button></div>`;
     holder.innerHTML = html;
@@ -612,7 +640,7 @@ function renderAdminSorteos(holder){
   }
 
   if(!t.groups){
-    html += `<div class="card tight"><b>Equipos asignados</b>${t.players.map(p=>`<div class="list-item"><span class="name">${p.alias}</span><span class="sub">${p.assignedTeam}</span></div>`).join('')}</div>
+    html += `<div class="card tight"><b>Equipos asignados</b>${t.players.map(p=>`<div class="list-item"><span class="name">${esc(p.alias)}</span><span class="sub">${esc(p.assignedTeam)}</span></div>`).join('')}</div>
     <div class="card tight"><b>Paso 3 · Sorteo de grupos</b><p class="small muted">Se dividirán los ${t.size} jugadores en grupos de 4.</p>
     <button class="btn" id="draw-groups">Sortear grupos</button></div>`;
     holder.innerHTML = html;
@@ -673,7 +701,7 @@ async function runDrawAssign(t, holder){
   for(const p of players){
     const card = document.createElement('div');
     card.className='flip-card';
-    card.innerHTML = `<div class="alias">${p.alias}</div><div class="team">${assignment[p.id]}</div>`;
+    card.innerHTML = `<div class="alias">${esc(p.alias)}</div><div class="team">${esc(assignment[p.id])}</div>`;
     flipsEl.appendChild(card);
     await new Promise(r=>setTimeout(r,120));
     card.classList.add('revealed');
@@ -735,7 +763,7 @@ function renderAdminTorneos(holder){
     INDEX.tournaments.forEach(tt=>{
       const active = INDEX.activeId===tt.id;
       html += `<div class="list-item">
-        <span class="name">${tt.name} ${active?'<span class=\"badge on\">activo</span>':''}</span>
+        <span class="name">${esc(tt.name)} ${active?'<span class=\"badge on\">activo</span>':''}</span>
         <span class="sub" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
           ${!active?`<button class="btn small ghost" data-act="activate" data-id="${tt.id}">Activar</button>`:''}
           <button class="btn small ghost" data-act="export" data-id="${tt.id}"><span class="material-symbols-outlined" style="font-size:1em;">download</span></button>
@@ -860,7 +888,7 @@ function buildTournamentCSV(t){
   if(t.bracket){
     out += 'LLAVE DE PLAYOFFS\r\n';
     out += csvRow(['Ronda','Jugador 1','Goles 1','Goles 2','Jugador 2','Ganador']);
-    const totalRounds = t.bracket.rounds.length;
+    const totalRounds = totalRoundsOf(t.bracket);
     t.bracket.rounds.forEach((round,ri)=>{
       round.forEach(m=> out += csvRow([roundLabel(totalRounds,ri), playerName(t,m.p1), m.s1??'', m.s2??'', playerName(t,m.p2), m.winner?playerName(t,m.winner):'']));
     });
@@ -917,9 +945,50 @@ document.querySelectorAll('.tabbar button').forEach(b=>{
   b.onclick = ()=>{ VIEW=b.dataset.view; render(); };
 });
 
+// Firestore reintenta la conexión indefinidamente sin rechazar la promesa: sin este
+// timeout, una config equivocada o la falta de internet dejan la página en blanco.
+function withTimeout(p, ms){
+  return Promise.race([p, new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')), ms))]);
+}
+
+function showBootError(titulo, detalle){
+  const pill = document.getElementById('status-pill');
+  pill.textContent = 'Sin conexión'; pill.className = 'pill';
+  $main.innerHTML = `<div class="empty">
+    <span class="ic"><span class="material-symbols-outlined">cloud_off</span></span>
+    <b style="color:var(--white)">${titulo}</b><br><br>${detalle}
+  </div>
+  <button class="btn" id="retry-boot">Reintentar</button>`;
+  document.getElementById('retry-boot').onclick = ()=>{
+    $main.innerHTML = `<div class="empty">Conectando…</div>`;
+    boot();
+  };
+}
+
 async function boot(){
-  await loadIndex();
-  if(INDEX.activeId) CURRENT = await loadTournament(INDEX.activeId);
+  if(!firebaseConfig){
+    showBootError('firebase-config.js no exporta la configuración',
+      'El archivo debe empezar con <b>export const firebaseConfig = {…}</b>. Firebase muestra el bloque sin la palabra <b>export</b>, así que hay que agregarla al pegarlo.');
+    return;
+  }
+  if(!firebaseConfig.apiKey || firebaseConfig.apiKey === 'TU_API_KEY_AQUI'){
+    showBootError('Falta configurar Firebase',
+      'Abre el archivo <b>firebase-config.js</b> y reemplaza los valores de ejemplo por los de tu proyecto (ver README, paso 1).');
+    return;
+  }
+  if(!db){
+    showBootError('La configuración de Firebase no es válida',
+      'Revisa que copiaste el bloque completo desde la consola de Firebase (apiKey, authDomain, projectId…).');
+    return;
+  }
+  try{
+    await withTimeout(loadIndex(), 8000);
+    if(INDEX.activeId) CURRENT = await withTimeout(loadTournament(INDEX.activeId), 8000);
+  }catch(e){
+    showBootError('No se pudo conectar con la base de datos',
+      'Revisa tu conexión a internet y que los datos de <b>firebase-config.js</b> sean correctos.');
+    return;
+  }
   render();
   attachTournamentListener(INDEX.activeId);
   attachIndexListener();

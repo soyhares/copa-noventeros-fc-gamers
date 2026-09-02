@@ -23,6 +23,10 @@ Google) para guardar los datos en tiempo real, y se hospeda gratis en **GitHub P
    (apiKey, authDomain, projectId, etc.) y pégalos en el archivo **`firebase-config.js`** de este
    proyecto, reemplazando los valores de ejemplo.
 
+   > ⚠️ **Conserva la palabra `export`**: el archivo debe decir
+   > `export const firebaseConfig = {…}`. Firebase te muestra el bloque sin ella, así que
+   > si pegas encima y la borras, la web se queda en blanco al abrirla.
+
    > ✅ Es normal y seguro que esta `apiKey` quede visible en tu repositorio público de GitHub.
    > No es una contraseña: es solo un identificador del proyecto. La seguridad real la dan las
    > **reglas de Firestore** (paso siguiente).

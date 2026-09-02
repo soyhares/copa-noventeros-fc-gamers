@@ -39,7 +39,12 @@ document. There are no partial updates and no transactions.
 
 ## Tournament lifecycle
 
-`status`: `registration` → `drawn` → `groups` → `playoffs` → `finished`.
+`status`: `registration` → `closed_reg` → `drawn` → `groups` → `playoffs` → `finished`.
+
+Al cerrar inscripciones, `formatoAjustado()` baja el `size` al mayor de 8/16/32 que quepa
+con los inscritos (mínimo 8); los que sobran pasan a `t.waitlist` por orden de llegada, sin
+borrarse. Esto existe porque `buildBracketFromGroups()` toma 2 clasificados por grupo y
+revienta si un grupo tiene menos de 2 jugadores.
 
 Sizes are 8/16/32 → always groups of 4 (`size/4` groups, letters A–H), full
 round robin inside each group, top 2 advance into the bracket built by

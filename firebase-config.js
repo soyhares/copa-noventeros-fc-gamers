@@ -9,10 +9,11 @@
 //    proyecto, no de acceso — la seguridad real la dan las reglas de Firestore).
 
 export const firebaseConfig = {
-  apiKey: "TU_API_KEY_AQUI",
-  authDomain: "tu-proyecto.firebaseapp.com",
-  projectId: "tu-proyecto",
-  storageBucket: "tu-proyecto.appspot.com",
-  messagingSenderId: "000000000000",
-  appId: "1:000000000000:web:xxxxxxxxxxxxxxxxxxxxxx"
+  apiKey: "AIzaSyDPTw2wfN4JqiuDpopEDp00_mYkMBjj_SY",
+  authDomain: "noveteros-fc-gamers.firebaseapp.com",
+  projectId: "noveteros-fc-gamers",
+  storageBucket: "noveteros-fc-gamers.firebasestorage.app",
+  messagingSenderId: "241774290631",
+  appId: "1:241774290631:web:15091d391f390829b580e2",
+  measurementId: "G-M4X7V29F72"
 };
