@@ -27,6 +27,6 @@ jobs:
 
       - name: Los archivos de la web existen
         run: |
-          for f in index.html style.css app.js firebase-config.js assets/bg.jpg; do
+          for f in index.html style.css app.js firebase-config.js assets/bg-neon.jpeg assets/bg-neon-desktop.jpeg assets/logo.png; do
             test -f "$f" || { echo "::error::Falta $f"; exit 1; }
           done
