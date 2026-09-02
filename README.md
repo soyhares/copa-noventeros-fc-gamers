@@ -137,6 +137,7 @@ app.js               → toda la lógica (sorteos, grupos, llave, CSV, Firestore
 firebase-config.js   → tu configuración de Firebase (edítala, no es secreta)
 assets/bg-neon.jpeg          → fondo en móvil (vertical)
 assets/bg-neon-desktop.jpeg  → fondo en pantallas ≥768px (apaisado)
+assets/logo.png              → icono del tab y vista previa al compartir
 ```
 
 ## Notas honestas
