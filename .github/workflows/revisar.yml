@@ -1,0 +1,32 @@
+# Se ejecuta en cada Pull Request. Comprueba lo mínimo que ha roto la web antes:
+# que firebase-config.js conserve el "export" y que app.js no tenga errores de sintaxis.
+name: Revisar
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  revisar:
+    name: Comprobaciones
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: firebase-config.js conserva el export
+        run: |
+          grep -q '^export const firebaseConfig' firebase-config.js || {
+            echo "::error file=firebase-config.js::Falta 'export'. Debe decir 'export const firebaseConfig = {…}'. Firebase muestra el bloque sin esa palabra y, sin ella, la web se abre en blanco."
+            exit 1
+          }
+
+      - name: app.js sin errores de sintaxis
+        run: |
+          cp app.js comprobar.mjs   # .mjs para que node lo valide como módulo ES
+          node --check comprobar.mjs
+
+      - name: Los archivos de la web existen
+        run: |
+          for f in index.html style.css app.js firebase-config.js assets/bg.jpg; do
+            test -f "$f" || { echo "::error::Falta $f"; exit 1; }
+          done

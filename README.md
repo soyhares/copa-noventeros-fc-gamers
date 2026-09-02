@@ -90,6 +90,44 @@ necesidad de cuenta de Claude ni de nada especial.
 5. Carga marcadores desde la pestaña **Torneo**, exporta el CSV cuando quieras desde
    **Admin → Panel** o **Admin → Torneos**.
 
+## Cómo se publica la web
+
+La web **no se actualiza sola al hacer merge**. `main` puede avanzar todo lo que quieras;
+el sitio solo cambia cuando publicas un **release**.
+
+1. Ve a **Releases → Draft a new release**.
+2. Crea una etiqueta nueva (`v1.0.1`, `v1.1.0`…), ponle título y describe los cambios.
+3. **Publish release** → el workflow *Publicar* despliega en GitHub Pages en 1-2 minutos.
+
+Si necesitas volver a publicar sin crear un release, entra en **Actions → Publicar →
+Run workflow**.
+
+## Cómo contribuir (para mis amigos)
+
+No hace falta que te dé permisos: se trabaja por **fork**.
+
+1. Botón **Fork** arriba a la derecha → tendrás tu propia copia.
+2. Haz tus cambios ahí (en tu fork puedes trabajar directo en `main`).
+3. **Contribute → Open pull request** hacia este repo.
+4. Cada PR pasa un chequeo automático y necesita mi aprobación antes de entrar.
+
+Consejos para que el PR pase a la primera:
+
+- **No toques `firebase-config.js`** salvo que sepas lo que haces: si se pierde la palabra
+  `export` del principio, la web se abre en blanco. El chequeo lo detecta y falla.
+- Prueba en local con `python3 -m http.server` y abre `http://localhost:8000`
+  (abrir el `index.html` directo con doble clic **no funciona**: el navegador bloquea los
+  módulos con `file://`).
+- Toda la interfaz va en español.
+
+## Cómo probar en local
+
+```bash
+python3 -m http.server 8000
+```
+
+Luego abre <http://localhost:8000>.
+
 ## Estructura del proyecto
 
 ```
