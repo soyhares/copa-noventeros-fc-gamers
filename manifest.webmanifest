@@ -1,0 +1,16 @@
+{
+  "name": "Copas Noventeros FC Gamers",
+  "short_name": "Copas Noventeros",
+  "description": "Torneos online de FC26 entre amigos: inscripción, sorteos, fase de grupos, playoffs y tabla de goleo.",
+  "lang": "es",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#090d09",
+  "theme_color": "#090d09",
+  "icons": [
+    { "src": "assets/icono-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icono-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icono-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

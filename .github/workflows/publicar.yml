@@ -28,7 +28,7 @@ jobs:
       - name: Reunir solo los archivos de la web
         run: |
           mkdir _sitio
-          cp -r index.html style.css app.js firebase-config.js assets _sitio/
+          cp -r index.html style.css app.js firebase-config.js manifest.webmanifest sw.js assets _sitio/
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

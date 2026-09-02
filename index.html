@@ -7,6 +7,7 @@
 <meta name="description" content="Torneos online de FC26 entre amigos: inscripción, sorteos, fase de grupos, playoffs y tabla de goleo.">
 
 <!-- Icono del tab y de la pantalla de inicio -->
+<link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" href="assets/logo.png">
 <link rel="apple-touch-icon" href="assets/logo.png">
 <meta name="theme-color" content="#090d09">
@@ -48,5 +49,12 @@
   </nav>
 </div>
 <script type="module" src="app.js"></script>
+<script>
+  // Permite instalar la web como app y abrirla sin conexión (el cascarón; los datos
+  // del torneo siguen necesitando internet).
+  if ('serviceWorker' in navigator) {
+    addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
+  }
+</script>
 </body>
 </html>

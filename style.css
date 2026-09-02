@@ -18,13 +18,13 @@
     background-repeat: no-repeat, no-repeat;
     background-attachment: fixed, fixed;
   }
-  /* En pantallas anchas, la versión apaisada: la vertical se recortaría demasiado.
-     El breakpoint es 768px porque la app en sí nunca pasa de 480px de ancho. */
+  /* En escritorio se muestra la misma imagen vertical, entera y centrada, sin
+     estirarla ni recortarla: lo que sobra a los lados queda en negro. */
   @media (min-width: 768px){
     body{
-      background-image:
-        linear-gradient(rgba(6,10,7,.42), rgba(6,10,7,.42)),
-        url('assets/bg-neon-desktop.jpeg');
+      background-color:#000;
+      background-size: cover, contain;
+      background-position: center, center;
     }
   }
   h1,h2,h3,.display{font-family:'Bebas Neue',sans-serif; letter-spacing:.5px;}

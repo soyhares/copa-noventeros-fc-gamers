@@ -102,6 +102,21 @@ el sitio solo cambia cuando publicas un **release**.
 Si necesitas volver a publicar sin crear un release, entra en **Actions → Publicar →
 Run workflow**.
 
+> ⚠️ **Si cambias index.html, style.css o app.js**, sube también el número de `VERSION`
+> en `sw.js` (`copas-v1` → `copas-v2`). El service worker guarda copias de esos archivos
+> y así se asegura de que todos reciban la versión nueva.
+
+## Instalar como app (PWA)
+
+La web se puede instalar en el móvil o el escritorio:
+
+- **Android/Chrome**: menú ⋮ → *Instalar aplicación*.
+- **iPhone/Safari**: botón compartir → *Añadir a pantalla de inicio*.
+- **Escritorio**: el icono de instalar en la barra de direcciones.
+
+Una vez instalada se abre sin la barra del navegador y **el diseño carga sin conexión**.
+Los datos del torneo sí necesitan internet: vienen de Firestore en tiempo real.
+
 ## Cómo contribuir (para mis amigos)
 
 No hace falta que te dé permisos: se trabaja por **fork**.
@@ -138,6 +153,10 @@ firebase-config.js   → tu configuración de Firebase (edítala, no es secreta)
 assets/bg-neon.jpeg          → fondo en móvil (vertical)
 assets/bg-neon-desktop.jpeg  → fondo en pantallas ≥768px (apaisado)
 assets/logo.png              → icono del tab y vista previa al compartir
+assets/icono-192.png         → icono de la app instalada (PWA)
+assets/icono-512.png         → icono grande de la app instalada (PWA)
+manifest.webmanifest         → datos de la app instalable
+sw.js                        → service worker (permite abrirla sin conexión)
 ```
 
 ## Notas honestas
