@@ -72,10 +72,10 @@ README ni .gitignore para evitar conflictos con estos archivos).
 
 ## 3. Publicar con GitHub Pages (gratis)
 
-1. En tu repositorio de GitHub: **Settings → Pages**.
-2. En "Source" elige la rama **main** y la carpeta **/ (root)**.
-3. Guarda. En 1-2 minutos tu sitio estará en:
-   `https://TU-USUARIO.github.io/copas-noventeros-fc-gamers/`
+Ya está configurado: **Settings → Pages** usa "GitHub Actions" como origen, y el
+despliegue lo hace el workflow *Publicar* cuando creas un release (ver más abajo).
+El sitio queda en:
+`https://soyhares.github.io/copa-noventeros-fc-gamers/`
 
 Ese es el link que compartes con tus amigos — se abre como cualquier página web, sin
 necesidad de cuenta de Claude ni de nada especial.
@@ -135,7 +135,8 @@ index.html          → estructura de la página
 style.css            → todos los estilos (tema oscuro + verde neón)
 app.js               → toda la lógica (sorteos, grupos, llave, CSV, Firestore)
 firebase-config.js   → tu configuración de Firebase (edítala, no es secreta)
-assets/bg.jpg        → imagen de fondo
+assets/bg-neon.jpeg          → fondo en móvil (vertical)
+assets/bg-neon-desktop.jpeg  → fondo en pantallas ≥768px (apaisado)
 ```
 
 ## Notas honestas
