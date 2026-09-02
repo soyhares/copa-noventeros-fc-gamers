@@ -1,0 +1,29 @@
+rules_version = '2';
+
+// Copas Noventeros FC Gamers
+//
+// Reglas deliberadamente abiertas: cualquiera con el link puede leer y escribir,
+// igual que el PIN de administrador, que es un tope de velocidad entre amigos y no
+// autenticación real. Apropiado para un torneo casual, no para datos sensibles.
+//
+// Lo que sí acotan: solo se puede tocar meta/ y tournaments/, las dos colecciones
+// que usa la app. El resto del proyecto queda cerrado.
+//
+// Si algún día quieres cerrarlo más, el paso siguiente es agregar Firebase
+// Authentication y exigir request.auth != null.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // meta/config  -> índice de torneos, PIN de admin, listas válidas
+    // meta/history -> historial de campeones
+    match /meta/{docId} {
+      allow read, write: if true;
+    }
+
+    // tournaments/{id} -> un documento por torneo
+    match /tournaments/{docId} {
+      allow read, write: if true;
+    }
+  }
+}
