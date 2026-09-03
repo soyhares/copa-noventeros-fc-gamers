@@ -3,11 +3,16 @@
 ## Project
 
 Static web app for running FC26 tournaments among friends. Spanish-language UI.
-No build step, no package manager, no tests, no backend of our own — Firebase
+No build step, no package manager, no backend of our own — Firebase
 Firestore holds all state, GitHub Pages serves the files.
 
 Run locally with any static server (`python3 -m http.server`) — opening
 `index.html` via `file://` breaks the ES module imports.
+
+There is no test suite. The one exception is `node tools/check-liga.mjs`, which slices the
+pure-logic block out of `app.js` (between `function newId()` and the `/* ---- bracket ---- */`
+marker) and asserts on it — `app.js` can't be imported by node directly. Move those markers
+and the script fails loudly.
 
 ## Files
 
@@ -65,12 +70,32 @@ to a since-detached node is still safe to write to (silently a no-op).
 
 ## Tournament lifecycle
 
-`status`: `registration` → `closed_reg` → `drawn` → `groups` → `playoffs` → `finished`.
+`t.mode` is `'copa'` or `'liga'` (a tournament saved before this field existed is a Copa —
+use the `esLiga(t)` helper, never `t.mode==='copa'`).
 
-Al cerrar inscripciones, `formatoAjustado()` baja el `size` al mayor de 8/16/32 que quepa
+**A Liga is stored as a Copa with a single group.** `groups:{L:[…everyone]}`,
+`groupMatches:{L:[…]}`, `bracket` always `null`. That's the whole trick: `computeStandings`,
+`allGroupMatchesPlayed`, `goleoTable`, the score-entry handler in `renderGrupos`, and the CSV
+all work untouched, and no new shape reaches Firestore. Don't give the Liga its own
+`jornadas`/`ligaMatches` structure — it would need the same nested-array care described below
+for nothing in return.
+
+`t.vuelta` (Liga only) duplicates every pair with p1/p2 swapped in `runDrawGroups`.
+`t.size` is the bracket format in Copa, but in Liga it's an **optional cap that may be `null`**
+(no limit); closing registration sets it to `players.length`, which is why everything
+downstream that reads `t.size` keeps working. Read it through `hayCupo()` / `cuposTexto()`.
+
+`computeStandings` tiebreaks Pts → DG → GF → head-to-head, for both modes.
+
+`status`: `registration` → `closed_reg` → `drawn` → `groups` → `playoffs` → `finished`.
+A Liga skips `playoffs`: from `groups` the admin's "Cerrar liga" button crowns
+`computeStandings(t,'L')[0]` and jumps straight to `finished`.
+
+Al cerrar inscripciones, `formatoAjustado(t)` baja el `size` al mayor de 8/16/32 que quepa
 con los inscritos (mínimo 8); los que sobran pasan a `t.waitlist` por orden de llegada, sin
 borrarse. Esto existe porque `buildBracketFromGroups()` toma 2 clasificados por grupo y
-revienta si un grupo tiene menos de 2 jugadores.
+revienta si un grupo tiene menos de 2 jugadores. En Liga esa restricción no aplica:
+`formatoAjustado()` solo exige `LIGA_MIN` (3) jugadores y no hay suplentes.
 
 Sizes are 8/16/32 → always groups of 4 (`size/4` groups, letters A–H), full
 round robin inside each group, top 2 advance into the bracket built by

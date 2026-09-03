@@ -65,6 +65,11 @@ async function saveTournament(t){ t.updatedAt = Date.now(); await fSet('tourname
 
 async function loadHistory(){ const h = await fGet('meta','history'); return (h && h.items) ? h.items : []; }
 async function saveHistory(h){ await fSet('meta','history', {items:h}); }
+async function pushHistory(t){
+  const hist = await loadHistory();
+  hist.push({id:t.id, name:t.name, champion:playerName(t,t.champion), date:Date.now(), size:t.size, mode:t.mode||'copa'});
+  await saveHistory(hist);
+}
 
 /* ---- suscripciones en tiempo real (reemplazan el polling) ---- */
 function attachTournamentListener(id){
@@ -93,26 +98,40 @@ function newId(){ return 't'+Math.random().toString(36).slice(2,9); }
 function uid(){ return 'p'+Math.random().toString(36).slice(2,9); }
 
 /* ================= TOURNAMENT MODEL ================= */
-function blankTournament(name, size, eventDate, regDeadline){
+// Una Liga se modela como un torneo de UN SOLO grupo ('L') sin bracket. Así toda la
+// maquinaria de grupos (computeStandings, goleoTable, carga de marcadores, CSV) se
+// reutiliza sin tocarla, y no aparece ninguna estructura nueva en Firestore.
+const esLiga = t => !!t && t.mode==='liga';   // torneos viejos sin 'mode' son Copa
+const LIGA_MIN = 3;
+
+function blankTournament(name, size, eventDate, regDeadline, mode='copa', vuelta=false){
   return {
     id:newId(), name, size, eventDate, regDeadline,
+    mode,                  // 'copa' | 'liga'
+    vuelta,                // solo liga: true = ida y vuelta
     status:'registration', // registration -> drawn(teams) -> groups -> playoffs -> finished
     players:[],            // {id, alias, club, country, assignedTeam}
     drawnTeams:[],         // selected N teams (strings, tagged with type)
-    groups:null,           // { A:[playerId,...], B:[...] }
+    groups:null,           // { A:[playerId,...], B:[...] }  ·  liga: { L:[todos] }
     groupMatches:null,     // { A:[{id,p1,p2,s1,s2,played}], B:[...] }
-    bracket:null,          // { rounds: [ [{p1,p2,s1,s2,played,winner}] ] }
+    bracket:null,          // { rounds: [ [{p1,p2,s1,s2,played,winner}] ] }  ·  liga: siempre null
     waitlist:[],           // inscritos que quedaron fuera al ajustar el formato
     champion:null,
   };
 }
+// size en Liga es un cupo máximo opcional: null = sin límite.
+function hayCupo(t){ return !t.size || t.players.length < t.size; }
+function cuposTexto(t){ return t.size ? `${t.players.length}/${t.size}` : `${t.players.length}`; }
 
 // La llave toma 2 clasificados por grupo, así que el torneo necesita al menos size/2
 // jugadores o buildBracketFromGroups revienta. Si no llegaron todos, bajamos el formato
 // al que sí calza en vez de dejar el torneo atascado.
+// La liga no tiene esa restricción: cualquier N >= LIGA_MIN sirve y el "formato"
+// resultante es simplemente la cantidad de inscritos.
 const FORMATOS = [8,16,32];
-function formatoAjustado(nPlayers, size){
-  const posibles = FORMATOS.filter(f => f<=size && f<=nPlayers);
+function formatoAjustado(t){
+  if(esLiga(t)) return t.players.length>=LIGA_MIN ? t.players.length : null;
+  const posibles = FORMATOS.filter(f => f<=t.size && f<=t.players.length);
   return posibles.length ? Math.max(...posibles) : null;
 }
 
@@ -151,7 +170,18 @@ function computeStandings(t, groupKey){
     else if(m.s1<m.s2){b.pg++;b.pts+=3;a.pp++;}
     else {a.pe++;b.pe++;a.pts++;b.pts++;}
   });
-  return Object.values(table).sort((x,y)=> y.pts-x.pts || (y.gf-y.gc)-(x.gf-x.gc) || y.gf-x.gf);
+  // Último criterio: enfrentamiento directo. Math.sign para que en ida y vuelta un
+  // triunfo por lado se anule en vez de sumar goles.
+  const h2h = (x,y)=>{
+    let d=0;
+    (t.groupMatches[groupKey]||[]).forEach(m=>{
+      if(!m.played) return;
+      if(m.p1===x.id && m.p2===y.id) d += Math.sign(m.s1-m.s2);
+      if(m.p1===y.id && m.p2===x.id) d += Math.sign(m.s2-m.s1);
+    });
+    return d;
+  };
+  return Object.values(table).sort((x,y)=> y.pts-x.pts || (y.gf-y.gc)-(x.gf-x.gc) || y.gf-x.gf || h2h(y,x));
 }
 function allGroupMatchesPlayed(t){
   return Object.values(t.groupMatches).every(list=>list.every(m=>m.played));
@@ -207,7 +237,7 @@ function setActiveTab(){
 }
 function statusLabel(t){
   if(!t) return { text:'Sin torneo', cls:'' };
-  const map = {registration:'Inscripciones abiertas', closed_reg:'Inscripciones cerradas', drawn:'Equipos sorteados', groups:'Fase de grupos', playoffs:'Playoffs', finished:'Finalizado'};
+  const map = {registration:'Inscripciones abiertas', closed_reg:'Inscripciones cerradas', drawn:'Equipos sorteados', groups: esLiga(t)?'Liga en curso':'Fase de grupos', playoffs:'Playoffs', finished:'Finalizado'};
   return { text: map[t.status]||t.status, cls: t.status==='registration'?'live':'' };
 }
 
@@ -240,7 +270,7 @@ function renderHome(){
     html += `<div class="card card-accent">
       <div class="list-item"><span class="name"><span class="material-symbols-outlined">calendar_month</span> Fecha del torneo</span><span>${fmtDate(t.eventDate)}</span></div>
       <div class="list-item"><span class="name"><span class="material-symbols-outlined">hourglass_empty</span> Cierre de inscripción</span><span>${fmtDate(t.regDeadline)}</span></div>
-      <div class="list-item"><span class="name"><span class="material-symbols-outlined">group</span> Cupos</span><span>${t.players.length}/${t.size}</span></div>
+      <div class="list-item"><span class="name"><span class="material-symbols-outlined">group</span> ${esLiga(t)&&!t.size?'Inscritos':'Cupos'}</span><span>${cuposTexto(t)}</span></div>
     </div>`;
 
     if(t.status==='registration'){
@@ -254,13 +284,15 @@ function renderHome(){
     }
   }
 
+  const pasos12 = `<b style="color:var(--white)">1. Registro —</b> cada jugador propone un alias, un club y un país.<br><br>
+    <b style="color:var(--white)">2. Sorteo de equipos —</b> de lo propuesto por todos, se sortean los equipos irrepetibles que competirán.<br><br>
+    <b style="color:var(--white)">3. Asignación —</b> cada equipo sorteado se asigna al azar a un jugador registrado.<br><br>`;
   html += `<div class="section-title"><div class="num"><span class="material-symbols-outlined">info</span></div><h3>Dinámica del torneo</h3></div>
   <div class="card tight small muted">
-    <b style="color:var(--white)">1. Registro —</b> cada jugador propone un alias, un club y un país.<br><br>
-    <b style="color:var(--white)">2. Sorteo de equipos —</b> de lo propuesto por todos, se sortean los equipos irrepetibles que competirán.<br><br>
-    <b style="color:var(--white)">3. Asignación —</b> cada equipo sorteado se asigna al azar a un jugador registrado.<br><br>
-    <b style="color:var(--white)">4. Sorteo de grupos —</b> los jugadores se dividen en grupos al azar.<br><br>
-    <b style="color:var(--white)">5. Clasificación —</b> avanzan quienes sumen más puntos en su grupo.
+    ${pasos12}${esLiga(t) ? `<b style="color:var(--white)">4. Calendario —</b> todos contra todos${t.vuelta?', ida y vuelta':''}. El empate es un resultado válido.<br><br>
+    <b style="color:var(--white)">5. Campeón —</b> gana quien sume más puntos en la tabla de posiciones.`
+    : `<b style="color:var(--white)">4. Sorteo de grupos —</b> los jugadores se dividen en grupos al azar.<br><br>
+    <b style="color:var(--white)">5. Clasificación —</b> avanzan quienes sumen más puntos en su grupo.`}
   </div>`;
 
   html += `<button class="btn ghost" data-action="show-history">Ver historial de campeones</button>`;
@@ -276,7 +308,7 @@ async function showHistory(){
   else {
     html += `<div class="card">`;
     hist.slice().reverse().forEach(h=>{
-      html += `<div class="hist-item"><b>${esc(h.name)}</b><br><span class="muted small">Campeón: ${esc(h.champion)} · ${fmtDate(h.date)} · ${h.size} equipos</span></div>`;
+      html += `<div class="hist-item"><b>${esc(h.name)}</b><br><span class="muted small">Campeón: ${esc(h.champion)} · ${fmtDate(h.date)} · ${h.mode==='liga'?'Liga':'Copa'} de ${h.size}</span></div>`;
     });
     html += `</div>`;
   }
@@ -300,7 +332,7 @@ function renderRegister(){
     html += `<div class="empty"><span class="ic"><span class="material-symbols-outlined">lock</span></span>Las inscripciones para <b>${esc(t.name)}</b> están cerradas.</div>`;
     $main.innerHTML = html; return;
   }
-  if(t.players.length>=t.size){
+  if(!hayCupo(t)){
     html += `<div class="empty"><span class="ic"><span class="material-symbols-outlined">check_circle</span></span>¡Cupos completos! (${t.size}/${t.size})</div>`;
     $main.innerHTML = html; return;
   }
@@ -322,7 +354,7 @@ function renderRegister(){
   <button class="btn" id="btn-submit" style="margin-top:18px;">Confirmar inscripción</button>
   <div id="reg-msg" style="margin-top:10px;"></div>
 
-  <div class="section-title"><div class="num">${t.players.length}</div><h3>Inscritos (${t.players.length}/${t.size})</h3></div>
+  <div class="section-title"><div class="num">${t.players.length}</div><h3>Inscritos (${cuposTexto(t)})</h3></div>
   <div class="card tight">
     ${t.players.length? t.players.map(p=>`<div class="list-item"><span class="name">${esc(p.alias)}</span><span class="sub">${esc(p.club)} · ${esc(p.country)}</span></div>`).join('') : '<div class="muted small">Sé el primero en inscribirte.</div>'}
   </div>`;
@@ -357,7 +389,7 @@ function renderRegister(){
     else if(!countryMatch){ errCountry.textContent='Ese país no existe en la lista válida de FC26.'; ok=false; }
     else if(countryTaken(fresh, country)){ errCountry.textContent='Ese país ya fue propuesto por otro jugador.'; ok=false; }
     if(!ok) return;
-    if(fresh.players.length>=fresh.size){ regMsg.innerHTML='<span class="field-error">Los cupos se llenaron justo ahora.</span>'; return; }
+    if(!hayCupo(fresh)){ regMsg.innerHTML='<span class="field-error">Los cupos se llenaron justo ahora.</span>'; return; }
     fresh.players.push({id:uid(), alias, club:clubMatch, country:countryMatch, assignedTeam:null});
     await saveTournament(fresh);
     regMsg.innerHTML = '<span class="field-ok"><span class="material-symbols-outlined" style="font-size:1em;">check_circle</span> ¡Inscripción confirmada! Nos vemos en la cancha.</span>';
@@ -375,7 +407,11 @@ function renderTournament(){
   let html = `<div class="section-title"><div class="num"><span class="material-symbols-outlined">emoji_events</span></div><h3>Torneo</h3></div>`;
   if(!t){ html += `<div class="empty"><span class="ic"><span class="material-symbols-outlined">warning</span></span>No hay torneo activo.</div>`; $main.innerHTML=html; return; }
 
-  const tabs = [['grupos','Grupos'],['tabla','Tabla'],['goleo','Goleo'],['llave','Llave']];
+  const tabs = esLiga(t)
+    ? [['grupos','Calendario'],['tabla','Tabla'],['goleo','Goleo']]
+    : [['grupos','Grupos'],['tabla','Tabla'],['goleo','Goleo'],['llave','Llave']];
+  // La liga no tiene llave: si venías de un torneo Copa, esa subvista ya no existe.
+  if(esLiga(t) && SUBVIEW_TOURN==='llave') SUBVIEW_TOURN='tabla';
   html += `<div class="tabs2">${tabs.map(([k,l])=>`<button data-sub="${k}" class="${SUBVIEW_TOURN===k?'active':''}">${l}</button>`).join('')}</div>`;
   html += `<div id="tourn-sub"></div>`;
   $main.innerHTML = html;
@@ -384,7 +420,7 @@ function renderTournament(){
   const holder = document.getElementById('tourn-sub');
 
   if(t.status==='registration'){
-    holder.innerHTML = `<div class="empty"><span class="ic"><span class="material-symbols-outlined">hourglass_empty</span></span>Aún en inscripción (${t.players.length}/${t.size}). Los sorteos aparecerán aquí cuando el admin los active.</div>`;
+    holder.innerHTML = `<div class="empty"><span class="ic"><span class="material-symbols-outlined">hourglass_empty</span></span>Aún en inscripción (${cuposTexto(t)}). Los sorteos aparecerán aquí cuando el admin los active.</div>`;
     return;
   }
 
@@ -395,10 +431,10 @@ function renderTournament(){
 }
 
 function renderGrupos(holder,t){
-  if(!t.groups){ holder.innerHTML = `<div class="empty"><span class="ic"><span class="material-symbols-outlined">casino</span></span>Los grupos aún no se han sorteado.</div>`; return; }
+  if(!t.groups){ holder.innerHTML = `<div class="empty"><span class="ic"><span class="material-symbols-outlined">casino</span></span>${esLiga(t)?'El calendario aún no se ha generado.':'Los grupos aún no se han sorteado.'}</div>`; return; }
   let html = '';
   for(const key in t.groups){
-    html += `<div class="card"><div class="grp-head">Grupo ${key}</div>`;
+    html += `<div class="card"><div class="grp-head">${esLiga(t)?`Calendario · ${(t.groupMatches[key]||[]).length} partidos`:`Grupo ${key}`}</div>`;
     t.groups[key].forEach(id=> html += `<div class="list-item"><span class="name">${esc(playerName(t,id))}</span><span class="sub">${esc(playerTeam(t,id))}</span></div>`);
     html += `<div style="height:10px"></div>`;
     (t.groupMatches[key]||[]).forEach(m=>{
@@ -436,17 +472,17 @@ function renderGrupos(holder,t){
 }
 
 function renderTabla(holder,t){
-  if(!t.groups){ holder.innerHTML=`<div class="empty"><span class="ic"><span class="material-symbols-outlined">bar_chart</span></span>Aún no hay grupos.</div>`; return; }
+  if(!t.groups){ holder.innerHTML=`<div class="empty"><span class="ic"><span class="material-symbols-outlined">bar_chart</span></span>${esLiga(t)?'La liga aún no arranca.':'Aún no hay grupos.'}</div>`; return; }
   let html='';
   for(const key in t.groups){
     const standings = computeStandings(t,key);
-    html += `<div class="card"><div class="grp-head">Grupo ${key}</div><table><thead><tr><th style="text-align:left">Jugador</th><th>PJ</th><th>PG</th><th>PE</th><th>PP</th><th>DG</th><th>Pts</th></tr></thead><tbody>`;
+    html += `<div class="card"><div class="grp-head">${esLiga(t)?'Tabla de posiciones':`Grupo ${key}`}</div><table><thead><tr><th style="text-align:left">Jugador</th><th>PJ</th><th>PG</th><th>PE</th><th>PP</th><th>DG</th><th>Pts</th></tr></thead><tbody>`;
     standings.forEach((s,i)=>{
-      html += `<tr class="${i<2?'qualify':''}"><td class="tname">${esc(playerName(t,s.id))}</td><td>${s.pj}</td><td>${s.pg}</td><td>${s.pe}</td><td>${s.pp}</td><td>${s.gf-s.gc}</td><td><b>${s.pts}</b></td></tr>`;
+      html += `<tr class="${(esLiga(t)? i===0 : i<2)?'qualify':''}"><td class="tname">${esc(playerName(t,s.id))}</td><td>${s.pj}</td><td>${s.pg}</td><td>${s.pe}</td><td>${s.pp}</td><td>${s.gf-s.gc}</td><td><b>${s.pts}</b></td></tr>`;
     });
     html += `</tbody></table></div>`;
   }
-  html += `<p class="muted small" style="margin-top:10px;">Resaltados en verde: clasifican a playoffs.</p>`;
+  html += `<p class="muted small" style="margin-top:10px;">${esLiga(t)?'Resaltado en verde: líder de la liga. Desempate: puntos, diferencia de gol, goles a favor y enfrentamiento directo.':'Resaltados en verde: clasifican a playoffs.'}</p>`;
   holder.innerHTML = html;
 }
 
@@ -519,9 +555,7 @@ function renderLlave(holder,t){
       await saveTournament(fresh);
       CURRENT = fresh;
       if(fresh.status==='finished'){
-        const hist = await loadHistory();
-        hist.push({id:fresh.id, name:fresh.name, champion:playerName(fresh,fresh.champion), date:Date.now(), size:fresh.size});
-        await saveHistory(hist);
+        await pushHistory(fresh);
         renderTournament();
         launchConfetti();
       } else {
@@ -587,19 +621,24 @@ function renderAdminPanel(holder){
   let html = `<div class="card">
     <div class="list-item"><span class="name">Torneo activo</span><span>${esc(t.name)}</span></div>
     <div class="list-item"><span class="name">Estado</span><span class="badge on">${statusLabel(t).text}</span></div>
-    <div class="list-item"><span class="name">Inscritos</span><span>${t.players.length}/${t.size}</span></div>
+    <div class="list-item"><span class="name">Modalidad</span><span>${esLiga(t)?`Liga · ${t.vuelta?'ida y vuelta':'ida'}`:'Copa'}</span></div>
+    <div class="list-item"><span class="name">Inscritos</span><span>${cuposTexto(t)}</span></div>
   </div>`;
   if(t.status==='registration'){
-    const ajuste = formatoAjustado(t.players.length, t.size);
+    const ajuste = formatoAjustado(t);
     html += `<button class="btn" id="close-reg" ${ajuste?'':'disabled'}>Cerrar inscripciones</button>`;
-    if(!ajuste) html += `<p class="small muted">Necesitas al menos 8 jugadores inscritos.</p>`;
+    if(!ajuste) html += `<p class="small muted">Necesitas al menos ${esLiga(t)?LIGA_MIN:8} jugadores inscritos.</p>`;
+    else if(esLiga(t)){
+      const pares = t.players.length*(t.players.length-1)/2;
+      html += `<p class="small muted">Se jugarán <b>${t.vuelta?pares*2:pares} partidos</b> entre los ${t.players.length} inscritos.</p>`;
+    }
     else if(ajuste !== t.size){
       const fuera = t.players.length - ajuste;
       html += `<p class="small muted">Con ${t.players.length} inscritos el torneo se ajustará a <b>${ajuste} equipos</b>`
         + (fuera? ` y ${fuera} ${fuera>1?'quedarán':'quedará'} como ${fuera>1?'suplentes':'suplente'}` : '') + `.</p>`;
     }
   } else {
-    html += `<p class="muted small">Usa la pestaña "Sorteos" para continuar con equipos, asignación y grupos. Los marcadores se cargan desde la pestaña "Torneo".</p>`;
+    html += `<p class="muted small">Usa la pestaña "Sorteos" para continuar con equipos, asignación y ${esLiga(t)?'calendario':'grupos'}. Los marcadores se cargan desde la pestaña "Torneo".</p>`;
   }
   html += `<button class="btn ghost" id="export-active"><span class="material-symbols-outlined" style="font-size:1em;">download</span> Exportar este torneo (.csv)</button>`;
   html += `<div class="section-title"><div class="num"><span class="material-symbols-outlined">group</span></div><h3>Inscritos</h3></div><div class="card tight">`;
@@ -615,9 +654,12 @@ function renderAdminPanel(holder){
   const btn = document.getElementById('close-reg');
   if(btn) btn.onclick = async (ev)=> conCarga(ev.currentTarget, 'Cerrando…', async ()=>{
     const fresh = await loadTournament(t.id);
-    const nuevo = formatoAjustado(fresh.players.length, fresh.size);
-    if(!nuevo){ alert('Necesitas al menos 8 jugadores inscritos para cerrar.'); return; }
-    if(nuevo !== fresh.size || fresh.players.length > nuevo){
+    const nuevo = formatoAjustado(fresh);
+    if(!nuevo){ alert(`Necesitas al menos ${esLiga(fresh)?LIGA_MIN:8} jugadores inscritos para cerrar.`); return; }
+    // En liga no hay ajuste de formato ni suplentes: el "formato" es la cantidad
+    // de inscritos, y fijarlo deja funcionando tal cual todo lo que lee t.size.
+    if(esLiga(fresh)){ fresh.size = fresh.players.length; }
+    else if(nuevo !== fresh.size || fresh.players.length > nuevo){
       const fuera = fresh.players.length - nuevo;
       const cola = fuera ? ` y ${fuera} ${fuera>1?'jugadores quedan':'jugador queda'} como ${fuera>1?'suplentes':'suplente'}` : '';
       if(!confirm(`${fresh.players.length} inscritos: el torneo se ajusta a ${nuevo} equipos${cola}. ¿Continuar?`)) return;
@@ -658,11 +700,33 @@ function renderAdminSorteos(holder){
   }
 
   if(!t.groups){
-    html += `<div class="card tight"><b>Equipos asignados</b>${t.players.map(p=>`<div class="list-item"><span class="name">${esc(p.alias)}</span><span class="sub">${esc(p.assignedTeam)}</span></div>`).join('')}</div>
-    <div class="card tight"><b>Paso 3 · Sorteo de grupos</b><p class="small muted">Se dividirán los ${t.size} jugadores en grupos de 4.</p>
+    const pares = t.size*(t.size-1)/2;
+    html += `<div class="card tight"><b>Equipos asignados</b>${t.players.map(p=>`<div class="list-item"><span class="name">${esc(p.alias)}</span><span class="sub">${esc(p.assignedTeam)}</span></div>`).join('')}</div>`;
+    html += esLiga(t)
+      ? `<div class="card tight"><b>Paso 3 · Generar calendario</b><p class="small muted">Todos contra todos${t.vuelta?', ida y vuelta':''}: ${t.vuelta?pares*2:pares} partidos entre los ${t.size} jugadores.</p>
+    <button class="btn" id="draw-groups">Generar calendario</button></div>`
+      : `<div class="card tight"><b>Paso 3 · Sorteo de grupos</b><p class="small muted">Se dividirán los ${t.size} jugadores en grupos de 4.</p>
     <button class="btn" id="draw-groups">Sortear grupos</button></div>`;
     holder.innerHTML = html;
     document.getElementById('draw-groups').onclick = ()=> runDrawGroups(t, holder);
+    return;
+  }
+
+  if(esLiga(t) && t.status==='groups' && allGroupMatchesPlayed(t)){
+    const lider = computeStandings(t,'L')[0];
+    html += `<div class="card tight"><b>Liga completa</b><p class="small muted">Todos los partidos tienen marcador. Líder: <b>${esc(playerName(t,lider.id))}</b> con ${lider.pts} pts.</p>
+    <button class="btn" id="close-liga">Cerrar liga y coronar campeón</button></div>`;
+    holder.innerHTML = html;
+    document.getElementById('close-liga').onclick = async (ev)=> conCarga(ev.currentTarget, 'Cerrando…', async ()=>{
+      const fresh = await loadTournament(t.id);
+      fresh.champion = computeStandings(fresh,'L')[0].id;
+      fresh.status = 'finished';
+      await saveTournament(fresh);
+      await pushHistory(fresh);
+      CURRENT = fresh;
+      SUBVIEW_TOURN='tabla'; VIEW='tournament'; render();
+      launchConfetti();
+    });
     return;
   }
 
@@ -737,14 +801,17 @@ async function runDrawAssign(t, holder){
 }
 
 async function runDrawGroups(t, holder){
-  const numGroups = t.size/4;
-  const letters='ABCDEFGH'.slice(0,numGroups);
-  holder.innerHTML = `<div class="card"><b>Formando grupos…</b><div class="group-cols" id="gcols" style="flex-wrap:wrap;margin-top:12px;"></div></div>`;
+  // La liga es un grupo único 'L' con todos los jugadores; el sorteo solo define el
+  // orden de la tabla inicial y el del calendario.
+  const liga = esLiga(t);
+  const letters = liga ? 'L' : 'ABCDEFGH'.slice(0, t.size/4);
+  holder.innerHTML = `<div class="card"><b>${liga?'Generando calendario…':'Formando grupos…'}</b><div class="group-cols" id="gcols" style="flex-wrap:wrap;margin-top:12px;"></div></div>`;
   const gcols = document.getElementById('gcols');
   const colEls = {};
   [...letters].forEach(L=>{
     const col = document.createElement('div'); col.className='group-col'; col.style.minWidth='120px';
-    col.innerHTML = `<h4>Grupo ${L}</h4><div class="slots" id="col-${L}"></div>`;
+    if(liga) col.style.flex = '1 1 100%';
+    col.innerHTML = `<h4>${liga?'Liga':'Grupo '+L}</h4><div class="slots" id="col-${L}"></div>`;
     gcols.appendChild(col); colEls[L]=document.getElementById('col-'+L);
   });
   const shuffled = shuffle(t.players.map(p=>p.id));
@@ -754,13 +821,17 @@ async function runDrawGroups(t, holder){
     groups[L].push(shuffled[i]);
     const slot = document.createElement('div'); slot.className='slot'; slot.textContent = playerName(t, shuffled[i]);
     colEls[L].appendChild(slot);
-    await new Promise(r=>setTimeout(r,220));
+    await new Promise(r=>setTimeout(r, liga? Math.max(40, 220-shuffled.length*8) : 220));
     slot.classList.add('in');
   }
   const fresh = await loadTournament(t.id);
   fresh.groups = groups;
   const groupMatches = {};
-  for(const key in groups) groupMatches[key] = roundRobinPairs(groups[key]).map(([p1,p2],i)=>({id:key+'-'+i,p1,p2,s1:null,s2:null,played:false}));
+  for(const key in groups){
+    let pares = roundRobinPairs(groups[key]);
+    if(liga && t.vuelta) pares = [...pares, ...pares.map(([a,b])=>[b,a])];
+    groupMatches[key] = pares.map(([p1,p2],i)=>({id:key+'-'+i,p1,p2,s1:null,s2:null,played:false}));
+  }
   fresh.groupMatches = groupMatches;
   fresh.status='groups';
   await saveTournament(fresh);
@@ -772,8 +843,18 @@ function renderAdminTorneos(holder){
   let html = `<div class="card tight">
     <b>Crear nuevo torneo</b>
     <label>Nombre</label><input id="nt-name" placeholder="Ej: Copa Verano FC27">
-    <label>Formato</label>
-    <select id="nt-size"><option value="8">8 equipos</option><option value="16">16 equipos</option><option value="32">32 equipos</option></select>
+    <label>Modalidad</label>
+    <select id="nt-mode"><option value="copa">Copa · grupos + playoffs</option><option value="liga">Liga · todos contra todos</option></select>
+    <div id="box-copa">
+      <label>Formato</label>
+      <select id="nt-size"><option value="8">8 equipos</option><option value="16">16 equipos</option><option value="32">32 equipos</option></select>
+    </div>
+    <div id="box-liga" hidden>
+      <label>Cupo máximo (opcional)</label>
+      <input id="nt-cupo" type="number" min="3" placeholder="Sin límite">
+      <label>Partidos</label>
+      <select id="nt-vuelta"><option value="">Solo ida</option><option value="1">Ida y vuelta</option></select>
+    </div>
     <label>Fecha del torneo</label><input id="nt-date" type="date">
     <label>Cierre de inscripción</label><input id="nt-deadline" type="date">
     <button class="btn" id="create-t" style="margin-top:14px;">Crear torneo</button>
@@ -785,7 +866,7 @@ function renderAdminTorneos(holder){
     INDEX.tournaments.forEach(tt=>{
       const active = INDEX.activeId===tt.id;
       html += `<div class="list-item">
-        <span class="name">${esc(tt.name)} ${active?'<span class=\"badge on\">activo</span>':''}</span>
+        <span class="name">${esc(tt.name)} <span class="badge">${tt.mode==='liga'?'Liga':'Copa'}</span> ${active?'<span class=\"badge on\">activo</span>':''}</span>
         <span class="sub" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
           ${!active?`<button class="btn small ghost" data-act="activate" data-id="${tt.id}">Activar</button>`:''}
           <button class="btn small ghost" data-act="export" data-id="${tt.id}"><span class="material-symbols-outlined" style="font-size:1em;">download</span></button>
@@ -799,18 +880,28 @@ function renderAdminTorneos(holder){
 
   document.getElementById('create-t').onclick = async (ev)=> conCarga(ev.currentTarget, 'Creando…', async ()=>{
     const name = document.getElementById('nt-name').value.trim() || 'Torneo sin nombre';
-    const size = parseInt(document.getElementById('nt-size').value);
+    const mode = document.getElementById('nt-mode').value;
+    // En liga size es el cupo máximo: vacío o inválido = null = sin límite.
+    const size = mode==='liga'
+      ? (parseInt(document.getElementById('nt-cupo').value) || null)
+      : parseInt(document.getElementById('nt-size').value);
+    const vuelta = mode==='liga' && !!document.getElementById('nt-vuelta').value;
     const eventDate = document.getElementById('nt-date').value;
     const regDeadline = document.getElementById('nt-deadline').value;
-    const t = blankTournament(name,size,eventDate,regDeadline);
+    const t = blankTournament(name,size,eventDate,regDeadline,mode,vuelta);
     await saveTournament(t);
-    INDEX.tournaments.push({id:t.id,name,size,createdAt:Date.now()});
+    INDEX.tournaments.push({id:t.id,name,size,mode,createdAt:Date.now()});
     INDEX.activeId = t.id;
     await saveIndex();
     CURRENT = t;
     attachTournamentListener(t.id);
     renderAdmin();
   });
+  const selMode = document.getElementById('nt-mode');
+  selMode.onchange = ()=>{
+    document.getElementById('box-copa').hidden = selMode.value!=='copa';
+    document.getElementById('box-liga').hidden = selMode.value!=='liga';
+  };
   holder.querySelectorAll('[data-act="export"]').forEach(b=> b.onclick = async ()=>{
     const tt = await loadTournament(b.dataset.id);
     if(tt) exportTournamentCSV(tt);
@@ -864,8 +955,9 @@ function csvRow(arr){ return arr.map(csvEsc).join(',') + '\r\n'; }
 function buildTournamentCSV(t){
   let out = '';
   out += 'INFORMACIÓN GENERAL\r\n';
-  out += csvRow(['Nombre','Formato','Fecha del torneo','Cierre de inscripción','Estado','Inscritos']);
-  out += csvRow([t.name, t.size+' equipos', fmtDate(t.eventDate), fmtDate(t.regDeadline), statusLabel(t).text, t.players.length+'/'+t.size]);
+  const liga = esLiga(t);
+  out += csvRow(['Nombre','Modalidad','Formato','Fecha del torneo','Cierre de inscripción','Estado','Inscritos']);
+  out += csvRow([t.name, liga?`Liga · ${t.vuelta?'ida y vuelta':'ida'}`:'Copa', t.size? t.size+(liga?' jugadores':' equipos'):'Sin límite', fmtDate(t.eventDate), fmtDate(t.regDeadline), statusLabel(t).text, cuposTexto(t)]);
   out += '\r\n';
 
   out += 'INSCRITOS\r\n';
@@ -881,25 +973,25 @@ function buildTournamentCSV(t){
   }
 
   if(t.groups){
-    out += 'GRUPOS\r\n';
-    out += csvRow(['Grupo','Jugador','Equipo']);
+    out += (liga?'PARTICIPANTES':'GRUPOS') + '\r\n';
+    out += csvRow([liga?'Liga':'Grupo','Jugador','Equipo']);
     for(const key in t.groups){
       t.groups[key].forEach(id=> out += csvRow([key, playerName(t,id), playerTeam(t,id)]));
     }
     out += '\r\n';
 
-    out += 'PARTIDOS DE GRUPO\r\n';
-    out += csvRow(['Grupo','Jugador 1','Goles 1','Goles 2','Jugador 2','Jugado']);
+    out += (liga?'CALENDARIO':'PARTIDOS DE GRUPO') + '\r\n';
+    out += csvRow([liga?'Liga':'Grupo','Jugador 1','Goles 1','Goles 2','Jugador 2','Jugado']);
     for(const key in t.groupMatches){
       t.groupMatches[key].forEach(m=> out += csvRow([key, playerName(t,m.p1), m.s1??'', m.s2??'', playerName(t,m.p2), m.played?'Sí':'No']));
     }
     out += '\r\n';
 
     out += 'TABLA DE POSICIONES\r\n';
-    out += csvRow(['Grupo','Jugador','PJ','PG','PE','PP','DG','Pts','Clasifica']);
+    out += csvRow([liga?'Liga':'Grupo','Jugador','PJ','PG','PE','PP','DG','Pts', liga?'Campeón':'Clasifica']);
     for(const key in t.groups){
       const standings = computeStandings(t,key);
-      standings.forEach((s,i)=> out += csvRow([key, playerName(t,s.id), s.pj, s.pg, s.pe, s.pp, s.gf-s.gc, s.pts, i<2?'Sí':'No']));
+      standings.forEach((s,i)=> out += csvRow([key, playerName(t,s.id), s.pj, s.pg, s.pe, s.pp, s.gf-s.gc, s.pts, (liga? i===0 : i<2)?'Sí':'No']));
     }
     out += '\r\n';
   }
