@@ -10,16 +10,16 @@ try{ db = getFirestore(initializeApp(firebaseConfig)); }
 catch(e){ /* boot() lo detecta y muestra el mensaje */ }
 
 async function fGet(col, id){
-  try{ const snap = await getDoc(doc(db,col,id)); return snap.exists() ? snap.data() : null; }
-  catch(e){ return null; }
+  const snap = await getDoc(doc(db,col,id));
+  return snap.exists() ? snap.data() : null;
 }
 async function fSet(col, id, data){
-  try{ await setDoc(doc(db,col,id), data); return true; }
-  catch(e){ return false; }
+  await setDoc(doc(db,col,id), data);
+  return true;
 }
 async function fDelete(col, id){
-  try{ await deleteDoc(doc(db,col,id)); return true; }
-  catch(e){ return false; }
+  await deleteDoc(doc(db,col,id));
+  return true;
 }
 
 const DEFAULT_TEAMS = {
@@ -325,32 +325,40 @@ function renderRegister(){
   $main.innerHTML = html;
   bindNav();
 
-  document.getElementById('btn-submit').onclick = async ()=>{
-    const alias = document.getElementById('in-alias').value.trim();
-    const club = document.getElementById('in-club').value.trim();
-    const country = document.getElementById('in-country').value.trim();
-    document.getElementById('err-alias').textContent='';
-    document.getElementById('err-club').textContent='';
-    document.getElementById('err-country').textContent='';
+  document.getElementById('btn-submit').onclick = async (ev)=> conCarga(ev.currentTarget, 'Enviando…', async ()=>{
+    // Referencias capturadas UNA vez, antes de cualquier await: si mientras se
+    // envía llega una actualización remota (otro jugador inscribiéndose a la vez)
+    // y eso repinta #main, document.getElementById ya no encontraría estos nodos.
+    // Con la referencia ya en mano, escribir en un nodo desprendido no falla, solo
+    // no se ve — que es exactamente lo correcto si la vista ya cambió.
+    const elAlias = document.getElementById('in-alias'), elClub = document.getElementById('in-club'), elCountry = document.getElementById('in-country');
+    const errAlias = document.getElementById('err-alias'), errClub = document.getElementById('err-club'), errCountry = document.getElementById('err-country');
+    const regMsg = document.getElementById('reg-msg');
+    const alias = elAlias.value.trim();
+    const club = elClub.value.trim();
+    const country = elCountry.value.trim();
+    errAlias.textContent='';
+    errClub.textContent='';
+    errCountry.textContent='';
     let ok = true;
     const fresh = await loadTournament(t.id); // re-check latest to avoid race
-    if(!alias){ document.getElementById('err-alias').textContent='Escribe un alias.'; ok=false; }
-    else if(aliasTaken(fresh, alias)){ document.getElementById('err-alias').textContent='Ese alias ya está tomado.'; ok=false; }
+    if(!alias){ errAlias.textContent='Escribe un alias.'; ok=false; }
+    else if(aliasTaken(fresh, alias)){ errAlias.textContent='Ese alias ya está tomado.'; ok=false; }
     const clubMatch = findTeamMatch(club,'club');
-    if(!club){ document.getElementById('err-club').textContent='Escribe un club.'; ok=false; }
-    else if(!clubMatch){ document.getElementById('err-club').textContent='Ese club no existe en la lista válida de FC26.'; ok=false; }
-    else if(clubTaken(fresh, club)){ document.getElementById('err-club').textContent='Ese club ya fue propuesto por otro jugador.'; ok=false; }
+    if(!club){ errClub.textContent='Escribe un club.'; ok=false; }
+    else if(!clubMatch){ errClub.textContent='Ese club no existe en la lista válida de FC26.'; ok=false; }
+    else if(clubTaken(fresh, club)){ errClub.textContent='Ese club ya fue propuesto por otro jugador.'; ok=false; }
     const countryMatch = findTeamMatch(country,'country');
-    if(!country){ document.getElementById('err-country').textContent='Escribe un país.'; ok=false; }
-    else if(!countryMatch){ document.getElementById('err-country').textContent='Ese país no existe en la lista válida de FC26.'; ok=false; }
-    else if(countryTaken(fresh, country)){ document.getElementById('err-country').textContent='Ese país ya fue propuesto por otro jugador.'; ok=false; }
+    if(!country){ errCountry.textContent='Escribe un país.'; ok=false; }
+    else if(!countryMatch){ errCountry.textContent='Ese país no existe en la lista válida de FC26.'; ok=false; }
+    else if(countryTaken(fresh, country)){ errCountry.textContent='Ese país ya fue propuesto por otro jugador.'; ok=false; }
     if(!ok) return;
-    if(fresh.players.length>=fresh.size){ document.getElementById('reg-msg').innerHTML='<span class="field-error">Los cupos se llenaron justo ahora.</span>'; return; }
+    if(fresh.players.length>=fresh.size){ regMsg.innerHTML='<span class="field-error">Los cupos se llenaron justo ahora.</span>'; return; }
     fresh.players.push({id:uid(), alias, club:clubMatch, country:countryMatch, assignedTeam:null});
     await saveTournament(fresh);
-    document.getElementById('reg-msg').innerHTML = '<span class="field-ok"><span class="material-symbols-outlined" style="font-size:1em;">check_circle</span> ¡Inscripción confirmada! Nos vemos en la cancha.</span>';
+    regMsg.innerHTML = '<span class="field-ok"><span class="material-symbols-outlined" style="font-size:1em;">check_circle</span> ¡Inscripción confirmada! Nos vemos en la cancha.</span>';
     setTimeout(()=>render(), 700);
-  };
+  });
 }
 
 function bindNav(){
@@ -407,7 +415,7 @@ function renderGrupos(holder,t){
   }
   holder.innerHTML = html;
   if(ADMIN_UNLOCKED){
-    document.getElementById('save-scores').onclick = async ()=>{
+    document.getElementById('save-scores').onclick = async (ev)=> conCarga(ev.currentTarget, 'Guardando…', async ()=>{
       const fresh = await loadTournament(t.id);
       holder.querySelectorAll('input.sc').forEach(inp=>{
         const [g,mid,field] = inp.dataset.m.split(':');
@@ -419,7 +427,7 @@ function renderGrupos(holder,t){
       await saveTournament(fresh);
       CURRENT = fresh;
       renderTournament();
-    };
+    });
   }
 }
 
@@ -428,11 +436,11 @@ function renderTabla(holder,t){
   let html='';
   for(const key in t.groups){
     const standings = computeStandings(t,key);
-    html += `<div class="grp-head">Grupo ${key}</div><table><thead><tr><th style="text-align:left">Jugador</th><th>PJ</th><th>PG</th><th>PE</th><th>PP</th><th>DG</th><th>Pts</th></tr></thead><tbody>`;
+    html += `<div class="card"><div class="grp-head">Grupo ${key}</div><table><thead><tr><th style="text-align:left">Jugador</th><th>PJ</th><th>PG</th><th>PE</th><th>PP</th><th>DG</th><th>Pts</th></tr></thead><tbody>`;
     standings.forEach((s,i)=>{
       html += `<tr class="${i<2?'qualify':''}"><td class="tname">${esc(playerName(t,s.id))}</td><td>${s.pj}</td><td>${s.pg}</td><td>${s.pe}</td><td>${s.pp}</td><td>${s.gf-s.gc}</td><td><b>${s.pts}</b></td></tr>`;
     });
-    html += `</tbody></table>`;
+    html += `</tbody></table></div>`;
   }
   html += `<p class="muted small" style="margin-top:10px;">Resaltados en verde: clasifican a playoffs.</p>`;
   holder.innerHTML = html;
@@ -440,9 +448,9 @@ function renderTabla(holder,t){
 
 function renderGoleo(holder,t){
   const rows = goleoTable(t);
-  let html = `<table><thead><tr><th style="text-align:left">Jugador</th><th>Goles</th></tr></thead><tbody>`;
+  let html = `<div class="card"><table><thead><tr><th style="text-align:left">Jugador</th><th>Goles</th></tr></thead><tbody>`;
   rows.forEach((r,i)=> html += `<tr><td class="tname">${i+1}. ${esc(playerName(t,r.id))}</td><td><b>${r.goals}</b></td></tr>`);
-  html += `</tbody></table>`;
+  html += `</tbody></table></div>`;
   holder.innerHTML = html;
 }
 
@@ -451,7 +459,7 @@ function renderLlave(holder,t){
   let html='';
   const totalRounds = totalRoundsOf(t.bracket);
   t.bracket.rounds.forEach((round,ri)=>{
-    html += `<div class="bracket-round"><div class="bracket-title">${roundLabel(totalRounds,ri)}</div>`;
+    html += `<div class="card bracket-round"><div class="bracket-title">${roundLabel(totalRounds,ri)}</div>`;
     round.forEach((m,mi)=>{
       html += `<div class="match">
         <span class="side">${esc(playerName(t,m.p1))}</span>
@@ -472,21 +480,27 @@ function renderLlave(holder,t){
   }
   holder.innerHTML = html;
   if(ADMIN_UNLOCKED && t.status!=='finished'){
-    document.getElementById('save-bracket').onclick = async ()=>{
+    document.getElementById('save-bracket').onclick = async (ev)=> conCarga(ev.currentTarget, 'Guardando…', async ()=>{
       const fresh = await loadTournament(t.id);
+      // Si el partido ya no existe en esa posición (otra sesión adelantó la llave
+      // mientras esta pestaña estaba abierta), se ignora ese dato en vez de romper
+      // todo el guardado: antes un solo índice desalineado perdía TODOS los marcadores.
       holder.querySelectorAll('input.sc').forEach(inp=>{
         const [ri,mi,field] = inp.dataset.bm.split(':');
-        const m = fresh.bracket.rounds[ri][mi];
+        const m = fresh.bracket.rounds[ri]?.[mi];
+        if(!m) return;
         m[field] = inp.value===''? null : parseInt(inp.value);
       });
       // Un empate en playoffs no puede resolverse solo: antes se descartaba en silencio
       // y el botón parecía muerto.
       const empatados = fresh.bracket.rounds.flat().filter(m=> m.s1!=null && m.s2!=null && m.s1===m.s2);
       if(empatados.length){
-        document.getElementById('bracket-msg').innerHTML =
-          '<span class="field-error">En playoffs no puede haber empate: define un ganador (tiempo extra o penales).</span>';
+        const msg = holder.querySelector('#bracket-msg');
+        if(msg) msg.innerHTML = '<span class="field-error">En playoffs no puede haber empate: define un ganador (tiempo extra o penales).</span>';
         return;
       }
+      const msg = holder.querySelector('#bracket-msg');
+      if(msg) msg.innerHTML = '';
       fresh.bracket.rounds.flat().forEach(m=>{
         if(m.s1!=null && m.s2!=null){ m.played=true; m.winner = m.s1>m.s2? m.p1:m.p2; }
       });
@@ -509,7 +523,7 @@ function renderLlave(holder,t){
       } else {
         renderTournament();
       }
-    };
+    });
   }
 }
 
@@ -523,14 +537,14 @@ function renderAdmin(){
       <input id="new-pin" placeholder="Crea un PIN (4-6 dígitos)" style="margin-top:14px;text-align:center;letter-spacing:4px;" maxlength="6">
       <button class="btn" id="set-pin" style="margin-top:12px;">Guardar PIN</button>
     </div>`;
-    document.getElementById('set-pin').onclick = async ()=>{
+    document.getElementById('set-pin').onclick = async (ev)=> conCarga(ev.currentTarget, 'Guardando…', async ()=>{
       const pin = document.getElementById('new-pin').value.trim();
       if(pin.length<4){ alert('El PIN debe tener al menos 4 dígitos.'); return; }
       INDEX.adminPin = pin;
       await saveIndex();
       ADMIN_UNLOCKED = true;
       renderAdmin();
-    };
+    });
     return;
   }
   if(!ADMIN_UNLOCKED){
@@ -595,7 +609,7 @@ function renderAdminPanel(holder){
   }
   holder.innerHTML = html;
   const btn = document.getElementById('close-reg');
-  if(btn) btn.onclick = async ()=>{
+  if(btn) btn.onclick = async (ev)=> conCarga(ev.currentTarget, 'Cerrando…', async ()=>{
     const fresh = await loadTournament(t.id);
     const nuevo = formatoAjustado(fresh.players.length, fresh.size);
     if(!nuevo){ alert('Necesitas al menos 8 jugadores inscritos para cerrar.'); return; }
@@ -610,7 +624,7 @@ function renderAdminPanel(holder){
     fresh.status='closed_reg';
     await saveTournament(fresh);
     render();
-  };
+  });
   document.getElementById('export-active').onclick = ()=> exportTournamentCSV(t);
 }
 
@@ -775,7 +789,7 @@ function renderAdminTorneos(holder){
   }
   holder.innerHTML = html;
 
-  document.getElementById('create-t').onclick = async ()=>{
+  document.getElementById('create-t').onclick = async (ev)=> conCarga(ev.currentTarget, 'Creando…', async ()=>{
     const name = document.getElementById('nt-name').value.trim() || 'Torneo sin nombre';
     const size = parseInt(document.getElementById('nt-size').value);
     const eventDate = document.getElementById('nt-date').value;
@@ -788,27 +802,29 @@ function renderAdminTorneos(holder){
     CURRENT = t;
     attachTournamentListener(t.id);
     renderAdmin();
-  };
+  });
   holder.querySelectorAll('[data-act="export"]').forEach(b=> b.onclick = async ()=>{
     const tt = await loadTournament(b.dataset.id);
     if(tt) exportTournamentCSV(tt);
   });
-  holder.querySelectorAll('[data-act="activate"]').forEach(b=> b.onclick = async ()=>{
+  holder.querySelectorAll('[data-act="activate"]').forEach(b=> b.onclick = ()=> conCarga(b, 'Activando…', async ()=>{
     INDEX.activeId = b.dataset.id;
     await saveIndex();
     CURRENT = await loadTournament(INDEX.activeId);
     attachTournamentListener(INDEX.activeId);
     renderAdmin();
-  });
+  }));
   holder.querySelectorAll('[data-act="delete"]').forEach(b=> b.onclick = async ()=>{
     if(!confirm('¿Eliminar este torneo y todos sus datos? Esta acción no se puede deshacer.')) return;
-    INDEX.tournaments = INDEX.tournaments.filter(x=>x.id!==b.dataset.id);
-    if(INDEX.activeId===b.dataset.id) INDEX.activeId = INDEX.tournaments[0]?.id || null;
-    await saveIndex();
-    await fDelete('tournaments', b.dataset.id);
-    CURRENT = INDEX.activeId ? await loadTournament(INDEX.activeId) : null;
-    attachTournamentListener(INDEX.activeId);
-    renderAdmin();
+    await conCarga(b, 'Eliminando…', async ()=>{
+      INDEX.tournaments = INDEX.tournaments.filter(x=>x.id!==b.dataset.id);
+      if(INDEX.activeId===b.dataset.id) INDEX.activeId = INDEX.tournaments[0]?.id || null;
+      await saveIndex();
+      await fDelete('tournaments', b.dataset.id);
+      CURRENT = INDEX.activeId ? await loadTournament(INDEX.activeId) : null;
+      attachTournamentListener(INDEX.activeId);
+      renderAdmin();
+    });
   });
 }
 
@@ -821,12 +837,12 @@ function renderAdminLista(holder){
   </div>
   <button class="btn" id="save-list">Guardar lista</button>`;
   holder.innerHTML = html;
-  document.getElementById('save-list').onclick = async ()=>{
+  document.getElementById('save-list').onclick = async (ev)=> conCarga(ev.currentTarget, 'Guardando…', async ()=>{
     INDEX.validTeams.clubs = document.getElementById('edit-clubs').value.split(',').map(s=>s.trim()).filter(Boolean);
     INDEX.validTeams.countries = document.getElementById('edit-countries').value.split(',').map(s=>s.trim()).filter(Boolean);
     await saveIndex();
     alert('Lista actualizada.');
-  };
+  });
 }
 
 /* ================= EXPORT CSV ================= */
@@ -938,6 +954,45 @@ function launchConfetti(){
     if(frame<220) requestAnimationFrame(tick); else ctx.clearRect(0,0,canvas.width,canvas.height);
   }
   tick();
+}
+
+/* ================= ERROR GLOBAL ================= */
+// Red gruesa: cualquier fallo de Firestore que no se maneje en el sitio (un guardado
+// que no llegó, una lectura que se cortó) termina aquí. Sin esto, esos fallos pasaban
+// en silencio y el admin no se enteraba de que un resultado no se guardó.
+let errorGlobalVisible = false;
+function mostrarErrorGlobal(){
+  if(errorGlobalVisible) return;
+  errorGlobalVisible = true;
+  const overlay = document.createElement('div');
+  overlay.className = 'error-overlay';
+  overlay.innerHTML = `<div class="error-box">
+    <span class="material-symbols-outlined">cloud_off</span>
+    <h3>Algo salió mal</h3>
+    <p>No se pudo completar la acción. Espera un momento y vuelve a intentarlo.</p>
+    <button class="btn" id="error-ok">Entendido</button>
+  </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#error-ok').onclick = ()=>{ overlay.remove(); errorGlobalVisible=false; };
+}
+window.addEventListener('unhandledrejection', e=>{ e.preventDefault(); mostrarErrorGlobal(); });
+window.addEventListener('error', e=>{ mostrarErrorGlobal(); });
+
+/* ================= INDICADOR DE CARGA ================= */
+// Envuelve un botón que dispara una escritura: lo deshabilita y muestra un spinner
+// mientras dura, y lo restaura al terminar (incluso si la acción falla).
+async function conCarga(boton, textoCargando, accion){
+  const original = boton.innerHTML;
+  boton.disabled = true;
+  boton.classList.add('cargando');
+  boton.innerHTML = `<span class="spinner"></span>${textoCargando}`;
+  try{
+    return await accion();
+  } finally {
+    boton.disabled = false;
+    boton.classList.remove('cargando');
+    boton.innerHTML = original;
+  }
 }
 
 /* ================= INIT (tiempo real con Firestore) ================= */

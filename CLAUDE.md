@@ -37,6 +37,24 @@ whole view. Follow that pattern; don't introduce a framework or a state library.
 Writes go through `saveIndex()` / `saveTournament(t)`, which set the whole
 document. There are no partial updates and no transactions.
 
+`fGet`/`fSet`/`fDelete` do **not** swallow Firestore errors — they let them throw.
+A caller that doesn't await/handle a write's promise gets an unhandled rejection,
+which the global `window.addEventListener('unhandledrejection'/'error', …)` catches
+and turns into a generic "algo salió mal" modal (`mostrarErrorGlobal()`). This is
+deliberate: an earlier version swallowed write failures silently, so a dropped
+connection mid-save looked successful locally and only reverted once the next
+real sync arrived. Don't reintroduce a try/catch around fSet/fDelete that
+returns `false` instead of throwing — that brings the silent-failure bug back.
+
+Any write-triggering button should be wrapped in `conCarga(boton, texto, accion)`
+— disables the button and shows a spinner for the duration, restores it in a
+`finally` (even on failure). Inside such a handler, capture any DOM elements
+you'll write to **before** the first `await` (into local consts), not via a
+fresh `document.getElementById(...)` after — a concurrent remote write can
+trigger a re-render mid-await (`onSnapshot` doesn't wait for you), replacing
+`#main` and making a later `getElementById` return `null`. A captured reference
+to a since-detached node is still safe to write to (silently a no-op).
+
 ## Tournament lifecycle
 
 `status`: `registration` → `closed_reg` → `drawn` → `groups` → `playoffs` → `finished`.
