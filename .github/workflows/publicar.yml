@@ -29,6 +29,9 @@ jobs:
         run: |
           mkdir _sitio
           cp -r index.html style.css app.js firebase-config.js manifest.webmanifest sw.js assets _sitio/
+          # assets/brand/ son las fuentes de marca en alta (~4.5 MB) que usa
+          # tools/iconos.sh. La web no las pide nunca: fuera del sitio publicado.
+          rm -rf _sitio/assets/brand
 
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
