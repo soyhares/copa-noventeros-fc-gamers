@@ -122,3 +122,9 @@ rejects duplicates (`aliasTaken` / `clubTaken` / `countryTaken`).
 - Keep it dependency-free. Firebase is loaded from the gstatic CDN as an ES module; that's the only dependency.
 - The admin PIN is deliberately weak — it's a speed bump between friends, not auth. Don't rebuild it as real security unless asked.
 - Firestore rules are intentionally wide open (see README). Same reasoning.
+
+## Roadmap
+
+`ROADMAP.md` tracks the in-flight sub-projects and their status. It also defines the
+session start/close protocol: read it at the start of a session, run each sub-project's
+verification line, and trust the code over the declared status. Update it before closing.
