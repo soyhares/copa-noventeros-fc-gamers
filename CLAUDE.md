@@ -69,6 +69,17 @@ round robin inside each group, top 2 advance into the bracket built by
 `buildBracketFromGroups()`. `tryAdvanceBracket()` fills the next round as
 results come in.
 
+**`t.bracket.rounds` is `[{partidos:[…matches]}, …]`, never a bare array of arrays.**
+Firestore's `setDoc` rejects any document containing an array whose elements are
+themselves arrays ("Nested arrays are not supported") — this only surfaces at the
+real `setDoc` call, so a hand-rolled/in-memory Firestore stub used for testing won't
+catch it. This bit the app in production: `buildBracketFromGroups()` used to set
+`rounds:[round0]` (an array of plain match arrays) and every attempt to generate the
+bracket failed silently-ish (a thrown `FirebaseError` from deep inside the SDK).
+When touching bracket code, keep every array nested inside an object, never directly
+inside another array — same restriction would apply to `groups`/`groupMatches` if
+their shape ever changes.
+
 Registration validates alias/club/country against `INDEX.validTeams` and
 rejects duplicates (`aliasTaken` / `clubTaken` / `countryTaken`).
 

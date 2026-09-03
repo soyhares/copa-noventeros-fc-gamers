@@ -159,7 +159,7 @@ function allGroupMatchesPlayed(t){
 function goleoTable(t){
   const totals = {}; t.players.forEach(p=>totals[p.id]=0);
   Object.values(t.groupMatches||{}).flat().forEach(m=>{ if(m.played){ totals[m.p1]+=m.s1; totals[m.p2]+=m.s2; }});
-  if(t.bracket) t.bracket.rounds.flat().forEach(m=>{ if(m.played){ totals[m.p1]=(totals[m.p1]||0)+m.s1; totals[m.p2]=(totals[m.p2]||0)+m.s2; }});
+  if(t.bracket) t.bracket.rounds.flatMap(r=>r.partidos).forEach(m=>{ if(m.played){ totals[m.p1]=(totals[m.p1]||0)+m.s1; totals[m.p2]=(totals[m.p2]||0)+m.s2; }});
   return Object.entries(totals).map(([id,goals])=>({id,goals})).sort((a,b)=>b.goals-a.goals);
 }
 
@@ -173,21 +173,24 @@ function buildBracketFromGroups(t){
     round0.push({p1:gA[0].id,p2:gB[1].id,s1:null,s2:null,played:false,winner:null});
     round0.push({p1:gB[0].id,p2:gA[1].id,s1:null,s2:null,played:false,winner:null});
   }
-  t.bracket = { rounds:[round0] };
+  // Firestore no admite arrays anidados: "rounds" no puede ser un array de arrays.
+  // Cada ronda va envuelta en {partidos:[...]} para que el array de partidos quede
+  // un nivel más adentro, dentro de un objeto.
+  t.bracket = { rounds:[{partidos:round0}] };
   t.status='playoffs';
 }
 function tryAdvanceBracket(t){
   const rounds = t.bracket.rounds;
-  const last = rounds[rounds.length-1];
+  const last = rounds[rounds.length-1].partidos;
   if(!last.every(m=>m.played)) return;
   if(last.length===1){ t.champion = last[0].winner; t.status='finished'; return; }
   const next = [];
   for(let i=0;i<last.length;i+=2){
     next.push({p1:last[i].winner,p2:last[i+1].winner,s1:null,s2:null,played:false,winner:null});
   }
-  rounds.push(next);
+  rounds.push({partidos:next});
 }
-function totalRoundsOf(bracket){ return Math.ceil(Math.log2(bracket.rounds[0].length*2)); }
+function totalRoundsOf(bracket){ return Math.ceil(Math.log2(bracket.rounds[0].partidos.length*2)); }
 function roundLabel(totalRounds, idx){
   const remaining = totalRounds-idx;
   if(remaining===1) return 'Final';
@@ -460,7 +463,7 @@ function renderLlave(holder,t){
   const totalRounds = totalRoundsOf(t.bracket);
   t.bracket.rounds.forEach((round,ri)=>{
     html += `<div class="card bracket-round"><div class="bracket-title">${roundLabel(totalRounds,ri)}</div>`;
-    round.forEach((m,mi)=>{
+    round.partidos.forEach((m,mi)=>{
       html += `<div class="match">
         <span class="side">${esc(playerName(t,m.p1))}</span>
         <span class="score">
@@ -487,13 +490,13 @@ function renderLlave(holder,t){
       // todo el guardado: antes un solo índice desalineado perdía TODOS los marcadores.
       holder.querySelectorAll('input.sc').forEach(inp=>{
         const [ri,mi,field] = inp.dataset.bm.split(':');
-        const m = fresh.bracket.rounds[ri]?.[mi];
+        const m = fresh.bracket.rounds[ri]?.partidos?.[mi];
         if(!m) return;
         m[field] = inp.value===''? null : parseInt(inp.value);
       });
       // Un empate en playoffs no puede resolverse solo: antes se descartaba en silencio
       // y el botón parecía muerto.
-      const empatados = fresh.bracket.rounds.flat().filter(m=> m.s1!=null && m.s2!=null && m.s1===m.s2);
+      const empatados = fresh.bracket.rounds.flatMap(r=>r.partidos).filter(m=> m.s1!=null && m.s2!=null && m.s1===m.s2);
       if(empatados.length){
         const msg = holder.querySelector('#bracket-msg');
         if(msg) msg.innerHTML = '<span class="field-error">En playoffs no puede haber empate: define un ganador (tiempo extra o penales).</span>';
@@ -501,7 +504,7 @@ function renderLlave(holder,t){
       }
       const msg = holder.querySelector('#bracket-msg');
       if(msg) msg.innerHTML = '';
-      fresh.bracket.rounds.flat().forEach(m=>{
+      fresh.bracket.rounds.flatMap(r=>r.partidos).forEach(m=>{
         if(m.s1!=null && m.s2!=null){ m.played=true; m.winner = m.s1>m.s2? m.p1:m.p2; }
       });
       // advance rounds as far as possible
@@ -910,7 +913,7 @@ function buildTournamentCSV(t){
     out += csvRow(['Ronda','Jugador 1','Goles 1','Goles 2','Jugador 2','Ganador']);
     const totalRounds = totalRoundsOf(t.bracket);
     t.bracket.rounds.forEach((round,ri)=>{
-      round.forEach(m=> out += csvRow([roundLabel(totalRounds,ri), playerName(t,m.p1), m.s1??'', m.s2??'', playerName(t,m.p2), m.winner?playerName(t,m.winner):'']));
+      round.partidos.forEach(m=> out += csvRow([roundLabel(totalRounds,ri), playerName(t,m.p1), m.s1??'', m.s2??'', playerName(t,m.p2), m.winner?playerName(t,m.winner):'']));
     });
     out += '\r\n';
   }
@@ -965,10 +968,7 @@ function launchConfetti(){
 // que no llegó, una lectura que se cortó) termina aquí. Sin esto, esos fallos pasaban
 // en silencio y el admin no se enteraba de que un resultado no se guardó.
 let errorGlobalVisible = false;
-// TEMPORAL para depurar el reporte de "Generar llave falla en móvil": muestra el
-// detalle técnico en pantalla. Quitar el bloque <details> antes de la próxima
-// versión "oficial" -- no es lo que un usuario final debe ver.
-function mostrarErrorGlobal(detalle){
+function mostrarErrorGlobal(){
   if(errorGlobalVisible) return;
   errorGlobalVisible = true;
   const overlay = document.createElement('div');
@@ -978,7 +978,6 @@ function mostrarErrorGlobal(detalle){
     <h3>Algo salió mal</h3>
     <p>No se pudo completar la acción. Espera un momento y vuelve a intentarlo.</p>
     <button class="btn" id="error-ok">Entendido</button>
-    ${detalle ? `<details style="text-align:left;margin-top:14px;"><summary style="cursor:pointer;color:var(--muted);font-size:12px;">Detalle técnico (temporal)</summary><pre style="white-space:pre-wrap;font-size:11px;color:var(--muted);margin-top:8px;">${esc(detalle)}</pre></details>` : ''}
   </div>`;
   document.body.appendChild(overlay);
   overlay.querySelector('#error-ok').onclick = ()=>{ overlay.remove(); errorGlobalVisible=false; };
@@ -989,11 +988,11 @@ function mostrarErrorGlobal(detalle){
 window.addEventListener('unhandledrejection', e=>{
   console.error('[Copas Noventeros] promesa rechazada sin manejar:', e.reason);
   e.preventDefault();
-  mostrarErrorGlobal(String(e.reason && e.reason.stack || e.reason));
+  mostrarErrorGlobal();
 });
 window.addEventListener('error', e=>{
   console.error('[Copas Noventeros] error:', e.error || e.message, e.filename+':'+e.lineno);
-  mostrarErrorGlobal(String((e.error && e.error.stack) || e.message) + '\n' + e.filename + ':' + e.lineno);
+  mostrarErrorGlobal();
 });
 
 /* ================= INDICADOR DE CARGA ================= */
