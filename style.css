@@ -54,6 +54,7 @@
   .muted{color:var(--muted);}
   .small{font-size:12px;}
   .hero{text-align:center;padding:18px 4px 6px;}
+  .hero-logo{width:132px;height:132px;object-fit:contain;margin:0 auto 6px;display:block;filter:drop-shadow(0 0 18px var(--accent-glow));}
   .hero .kicker{font-size:12px;color:var(--accent);font-weight:700;}
   .hero h1{font-size:48px;margin:2px 0 0;line-height:.92;color:var(--white);text-shadow:0 0 24px rgba(255,255,255,.08);}
   .hero h1 .g{color:var(--accent);display:block;font-size:44px;transform:skewX(-6deg);}

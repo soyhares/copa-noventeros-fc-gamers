@@ -6,7 +6,7 @@
 //
 // Al cambiar archivos, sube VERSION: al activarse borra las cachés anteriores, así
 // nadie se queda con una versión vieja pegada.
-const VERSION = 'copas-v5';
+const VERSION = 'copas-v6';
 
 const ARCHIVOS = [
   './', './index.html', './style.css', './app.js', './firebase-config.js',

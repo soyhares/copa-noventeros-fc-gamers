@@ -228,6 +228,7 @@ function renderHome(){
   const t = CURRENT;
   let html = '';
   html += `<div class="hero">
+    <img class="hero-logo" src="assets/logo.png" alt="Copas Noventeros FC Gamers">
     <div class="kicker">TORNEOS ONLINE · 100% GRATUITOS</div>
     <h1>COPAS<span class="g">NOVENTEROS FC GAMERS</span></h1>
     <p>Compite. Diviértete. Vive cada copa como se debe.</p>
