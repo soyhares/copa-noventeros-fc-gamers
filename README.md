@@ -83,12 +83,18 @@ necesidad de cuenta de Claude ni de nada especial.
 ## 4. Primer uso
 
 1. Abre el link → pestaña **Admin** → crea tu PIN de administrador.
-2. **Admin → Torneos** → crea tu torneo (nombre, formato 8/16/32, fechas) → queda activo.
+2. **Admin → Torneos** → crea tu torneo (nombre, modalidad, fechas) → queda activo.
+   - **Copa**: formato 8/16/32 → grupos de 4 → llave de playoffs. Si se inscriben menos
+     de los previstos, el formato baja solo y los que sobran quedan como suplentes.
+   - **Liga**: todos contra todos, solo ida o ida y vuelta. Sin límite de jugadores
+     (o con un cupo máximo, si lo pones). Mínimo 3 inscritos. El empate es un
+     resultado válido y gana quien termine primero en la tabla.
 3. Comparte el link. Tus amigos entran directo a **Inscribirme**.
 4. Cuando tengas suficientes inscritos: **Admin → Panel** → cerrar inscripciones →
-   **Admin → Sorteos** → equipos → asignación → grupos.
-5. Carga marcadores desde la pestaña **Torneo**, exporta el CSV cuando quieras desde
-   **Admin → Panel** o **Admin → Torneos**.
+   **Admin → Sorteos** → equipos → asignación → grupos (Copa) o calendario (Liga).
+5. Carga marcadores desde la pestaña **Torneo**. Al completarse todos los partidos,
+   **Admin → Sorteos** ofrece generar la llave (Copa) o coronar al campeón (Liga).
+6. Exporta el CSV cuando quieras desde **Admin → Panel** o **Admin → Torneos**.
 
 ## Cómo se publica la web
 
