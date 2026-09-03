@@ -666,13 +666,17 @@ function renderAdminSorteos(holder){
     html += `<div class="card tight"><b>Fase de grupos completa</b><p class="small muted">Todos los partidos de grupo tienen marcador. Genera la llave de playoffs.</p>
     <button class="btn" id="build-bracket">Generar llave de playoffs</button></div>`;
     holder.innerHTML = html;
-    document.getElementById('build-bracket').onclick = async ()=>{
+    document.getElementById('build-bracket').onclick = async (ev)=> conCarga(ev.currentTarget, 'Generando…', async ()=>{
+      console.log('[Copas Noventeros] generar llave: click recibido, cargando torneo…');
       const fresh = await loadTournament(t.id);
+      console.log('[Copas Noventeros] generar llave: torneo cargado, construyendo bracket…');
       buildBracketFromGroups(fresh);
+      console.log('[Copas Noventeros] generar llave: bracket construido, guardando…');
       await saveTournament(fresh);
+      console.log('[Copas Noventeros] generar llave: guardado OK');
       CURRENT = fresh;
       SUBVIEW_TOURN='llave'; VIEW='tournament'; render();
-    };
+    });
     return;
   }
 
@@ -975,8 +979,18 @@ function mostrarErrorGlobal(){
   document.body.appendChild(overlay);
   overlay.querySelector('#error-ok').onclick = ()=>{ overlay.remove(); errorGlobalVisible=false; };
 }
-window.addEventListener('unhandledrejection', e=>{ e.preventDefault(); mostrarErrorGlobal(); });
-window.addEventListener('error', e=>{ mostrarErrorGlobal(); });
+// preventDefault() en unhandledrejection suprime el log automático del navegador
+// en consola -- por eso el detalle se registra explícito aquí con console.error,
+// para poder diagnosticar por Web Inspector remoto sin exponer nada al usuario.
+window.addEventListener('unhandledrejection', e=>{
+  console.error('[Copas Noventeros] promesa rechazada sin manejar:', e.reason);
+  e.preventDefault();
+  mostrarErrorGlobal();
+});
+window.addEventListener('error', e=>{
+  console.error('[Copas Noventeros] error:', e.error || e.message, e.filename+':'+e.lineno);
+  mostrarErrorGlobal();
+});
 
 /* ================= INDICADOR DE CARGA ================= */
 // Envuelve un botón que dispara una escritura: lo deshabilita y muestra un spinner
