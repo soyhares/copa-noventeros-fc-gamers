@@ -118,8 +118,12 @@ La web se puede instalar en el móvil o el escritorio:
 - **iPhone/Safari**: botón compartir → *Añadir a pantalla de inicio*.
 - **Escritorio**: el icono de instalar en la barra de direcciones.
 
-Una vez instalada se abre sin la barra del navegador y **el diseño carga sin conexión**.
-Los datos del torneo sí necesitan internet: vienen de Firestore en tiempo real.
+Una vez instalada aparece como **FC Gamers90** en la pantalla de inicio, se abre sin la barra del
+navegador y **el diseño carga sin conexión**. Los datos del torneo sí necesitan internet: vienen de
+Firestore en tiempo real.
+
+(Dentro de la app la marca se lee NOVENTEROS FC GAMERS. Los dos nombres son a propósito — ver
+[MARCA.md](MARCA.md#01-esencia-de-marca).)
 
 ## Cómo contribuir (para mis amigos)
 
@@ -156,12 +160,20 @@ app.js               → toda la lógica (sorteos, grupos, llave, CSV, Firestore
 firebase-config.js   → tu configuración de Firebase (edítala, no es secreta)
 assets/bg-neon.jpeg          → fondo en móvil (vertical)
 assets/bg-neon-desktop.jpeg  → fondo en pantallas ≥768px (apaisado)
-assets/logo.png              → icono del tab y vista previa al compartir
-assets/icono-192.png         → icono de la app instalada (PWA)
-assets/icono-512.png         → icono grande de la app instalada (PWA)
+assets/brand/                → fuentes de marca en alta (la app NO las descarga)
+assets/logo.png              → isotipo que sirve la app (topbar, hero, sello)
+assets/favicon-*.png         → icono de la pestaña
+assets/apple-touch-icon.png  → icono en la pantalla de inicio de iOS
+assets/icon-*.png            → iconos de la app instalada (PWA)
+assets/og.jpg                → vista previa al compartir el link
+tools/iconos.sh              → genera todos los iconos desde assets/brand/
 manifest.webmanifest         → datos de la app instalable
 sw.js                        → service worker (permite abrirla sin conexión)
+MARCA.md                     → libro de marca: colores, tipografía, uso del logo
 ```
+
+Los iconos **no se editan a mano**: se cambia el arte en `assets/brand/` y se corre
+`bash tools/iconos.sh`. Ver [MARCA.md §21](MARCA.md#21-versiones-oficiales).
 
 ## Notas honestas
 

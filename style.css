@@ -28,10 +28,22 @@
     /* SHADOWS */
     --shadow:rgba(0,0,0,.55); --shadow-deep:rgba(0,0,0,.78);
 
+    /* TYPEFACES (§09: geométrica y ligeramente extendida para la marca,
+       neutra para la interfaz. El tracking es parte de la personalidad.) */
+    --font-display:'Outfit', system-ui, sans-serif;
+    --font-ui:'Inter', system-ui, sans-serif;
+
     --r:10px;
   }
+
+  /* §10 -- los cuatro niveles de jerarquía. Nivel 01 es el wordmark y aparece una
+     sola vez por pantalla; del 02 para abajo se reparte todo lo demás. */
+  .n1{font-family:var(--font-display);font-weight:700;text-transform:uppercase;letter-spacing:.18em;}
+  .n2{font-family:var(--font-display);font-weight:600;text-transform:uppercase;letter-spacing:.06em;}
+  .n3{font-family:var(--font-ui);font-weight:500;letter-spacing:.02em;}
+  .n4{font-family:var(--font-ui);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.14em;}
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
-  html,body{margin:0;padding:0;background:var(--bg);color:var(--white);font-family:'Barlow Semi Condensed',sans-serif;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--white);font-family:var(--font-ui);}
   /* Dark matte first: el carbón domina. La foto neón queda muy por debajo, como
      textura y no como fondo protagonista; encima va un halo verde tenue y viñeta. */
   body{
@@ -54,7 +66,7 @@
       background-position: center top, center bottom, center, center;
     }
   }
-  h1,h2,h3,.display{font-family:'Bebas Neue',sans-serif; letter-spacing:.5px;}
+  h1,h2,h3,.display{font-family:var(--font-display);font-weight:600;text-transform:uppercase;letter-spacing:.06em;}
   #app{max-width:480px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;position:relative;}
   #main{flex:1;padding:16px 16px 90px;}
 
@@ -74,10 +86,10 @@
   .brand-wrap{display:flex;align-items:center;gap:10px;}
   .brand-logo{width:34px;height:34px;object-fit:contain;flex-shrink:0;filter:drop-shadow(0 2px 6px var(--shadow-deep));}
   .brand{display:flex;flex-direction:column;line-height:.85;}
-  .brand b{font-family:'Bebas Neue';font-size:22px;color:var(--white);}
-  .brand .ver{font-family:'Barlow Semi Condensed';font-size:10px;color:var(--muted-dark);font-weight:600;letter-spacing:.5px;vertical-align:middle;margin-left:2px;}
-  .brand span{font-size:11px;color:var(--accent-dim);font-weight:700;letter-spacing:1.4px;}
-  .pill{font-size:11px;padding:4px 10px;border:1px solid var(--line);border-radius:20px;color:var(--muted);background:var(--panel-dark);}
+  .brand b{font-size:16px;color:var(--white);}
+  .brand .ver{font-family:var(--font-ui);font-size:10px;color:var(--muted-dark);font-weight:600;letter-spacing:.5px;vertical-align:middle;margin-left:2px;}
+  .brand > span{color:var(--silver);}
+  .pill{font-family:var(--font-ui);font-weight:600;text-transform:uppercase;letter-spacing:.14em;font-size:10px;padding:4px 10px;border:1px solid var(--line);border-radius:20px;color:var(--muted);background:var(--panel-dark);}
   .pill.live{color:var(--accent);border-color:var(--lineBright);background:var(--accent-subtle);box-shadow:0 0 12px var(--accent-glow);}
 
   .tabbar{
@@ -87,7 +99,7 @@
     backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
     box-shadow:0 -10px 30px var(--shadow-deep);
   }
-  .tabbar button{position:relative;flex:1;background:none;border:none;color:var(--muted-dark);padding:11px 4px 13px;font-family:'Barlow Semi Condensed';font-size:11px;font-weight:600;letter-spacing:.3px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;transition:color .18s ease;}
+  .tabbar button{position:relative;flex:1;background:none;border:none;color:var(--muted-dark);padding:11px 4px 13px;font-family:var(--font-ui);font-size:11px;font-weight:600;letter-spacing:.3px;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;transition:color .18s ease;}
   .tabbar button .ic{font-size:19px;}
   .tabbar button.active{color:var(--accent);}
   /* Estado activo: relieve sutil + barra superior, en vez de glow por todos lados. */
@@ -110,23 +122,29 @@
   .section-title .num{
     width:24px;height:24px;border-radius:6px;background:var(--panel-elevated);
     border:1px solid var(--lineBright);color:var(--accent);font-weight:800;font-size:12px;
-    display:flex;align-items:center;justify-content:center;font-family:'Barlow Semi Condensed';
-    box-shadow:inset 0 1px 0 rgba(255,255,255,.05), 0 0 12px var(--accent-glow);
+    display:flex;align-items:center;justify-content:center;font-family:var(--font-ui);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.05);
   }
   .section-title h3{margin:0;font-size:20px;color:var(--white);letter-spacing:1px;}
   .muted{color:var(--muted);}
   .small{font-size:12px;}
 
   .hero{text-align:center;padding:22px 4px 6px;}
-  .hero-logo{width:150px;height:150px;object-fit:contain;margin:0 auto 10px;display:block;filter:drop-shadow(0 8px 22px var(--shadow-deep)) drop-shadow(0 0 26px var(--accent-glow));}
-  .hero .kicker{font-size:11px;color:var(--accent-dim);font-weight:700;letter-spacing:2px;text-transform:uppercase;}
-  .hero h1{font-size:48px;margin:4px 0 0;line-height:.92;color:var(--white);text-shadow:0 2px 18px rgba(0,0,0,.6);}
+  .hero-logo{width:150px;height:150px;object-fit:contain;margin:0 auto 10px;display:block;filter:drop-shadow(0 8px 22px var(--shadow-deep));}
+  .hero .kicker{font-size:11px;color:var(--muted);font-weight:600;letter-spacing:.2em;text-transform:uppercase;}
+  .hero h1{font-size:38px;margin:6px 0 0;line-height:1;letter-spacing:.14em;color:var(--white);text-shadow:0 2px 18px rgba(0,0,0,.6);}
   .hero h1 .g{
-    display:block;font-size:44px;transform:skewX(-6deg);
+    display:block;font-size:38px;transform:skewX(-6deg);
     background:linear-gradient(180deg, var(--accent) 10%, var(--accent-dark) 130%);
     -webkit-background-clip:text;background-clip:text;color:transparent;
   }
   .hero p{color:var(--muted);font-size:14px;margin-top:8px;}
+  /* §15: la marca firma, el torneo titula. Nivel 02 bajo el wordmark. */
+  .torneo-activo{
+    font-family:var(--font-display);font-weight:600;text-transform:uppercase;
+    letter-spacing:.06em;font-size:17px;color:var(--silver);margin-top:14px;
+    padding-top:12px;border-top:1px solid var(--lineSoft);display:inline-block;
+  }
 
   /* Dark matte first: el CTA es una superficie de carbón con filo y glow neón,
      no un bloque verde saturado a todo el ancho. */
@@ -134,12 +152,12 @@
     display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:13px 18px;
     border-radius:8px;border:1px solid var(--accent-dim);
     background:linear-gradient(180deg, #17241b, var(--panel-dark));
-    color:var(--accent);font-weight:800;font-family:'Barlow Semi Condensed';font-size:15px;
+    color:var(--accent);font-weight:800;font-family:var(--font-ui);font-size:15px;
     letter-spacing:.6px;text-transform:uppercase;cursor:pointer;width:100%;
     transition:transform .15s ease, box-shadow .15s ease, border-color .15s ease;
-    box-shadow:inset 0 1px 0 rgba(255,255,255,.06), 0 6px 18px var(--shadow), 0 0 14px var(--accent-glow);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.06), 0 6px 18px var(--shadow);
   }
-  .btn:hover{border-color:var(--accent);box-shadow:inset 0 1px 0 rgba(255,255,255,.08), 0 6px 18px var(--shadow), 0 0 22px var(--accent-glow);}
+  .btn:hover, .btn:focus-visible{border-color:var(--accent);box-shadow:inset 0 1px 0 rgba(255,255,255,.08), 0 6px 18px var(--shadow), 0 0 18px var(--accent-glow);}
   .btn:active{transform:scale(.97);box-shadow:inset 0 2px 8px rgba(0,0,0,.6);}
   .btn.secondary{background:var(--panel-dark);color:var(--silver);border-color:var(--line);box-shadow:inset 0 1px 0 rgba(255,255,255,.04), 0 4px 14px var(--shadow);}
   .btn.ghost{background:transparent;color:var(--muted);border-color:var(--lineSoft);box-shadow:none;}
@@ -150,10 +168,10 @@
   .row{display:flex;gap:10px;}
   .row > *{flex:1;}
 
-  label{display:block;font-size:11px;color:var(--muted);margin:12px 0 5px;font-weight:600;letter-spacing:.8px;text-transform:uppercase;}
+  label{display:block;font-family:var(--font-ui);font-size:11px;color:var(--muted);margin:12px 0 5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;}
   input, select, textarea{
     width:100%;padding:12px;background:var(--panel-dark);border:1px solid var(--line);
-    border-radius:8px;color:var(--white);font-family:'Barlow Semi Condensed';font-size:15px;
+    border-radius:8px;color:var(--white);font-family:var(--font-ui);font-size:15px;
     box-shadow:inset 0 2px 6px rgba(0,0,0,.45);transition:border-color .15s ease, box-shadow .15s ease;
   }
   input::placeholder, textarea::placeholder{color:var(--muted-dark);}
@@ -161,7 +179,7 @@
   .field-error{color:var(--danger);font-size:12px;margin-top:5px;}
   .field-ok{color:var(--accent);font-size:12px;margin-top:5px;}
 
-  .badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:700;border:1px solid var(--line);color:var(--muted);background:var(--panel-dark);}
+  .badge{display:inline-block;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.12em;border:1px solid var(--line);color:var(--muted);background:var(--panel-dark);}
   .badge.on{color:var(--accent);border-color:var(--lineBright);background:var(--accent-subtle);}
   .badge.warn{color:var(--danger);border-color:var(--danger);background:var(--red-glow);}
 
@@ -171,16 +189,16 @@
   .list-item .sub{color:var(--muted);font-size:12px;}
 
   .tabs2{display:flex;gap:6px;margin-bottom:14px;overflow-x:auto;}
-  .tabs2 button{flex:none;padding:8px 14px;border-radius:20px;border:1px solid var(--line);background:var(--panel-dark);color:var(--muted);font-family:'Barlow Semi Condensed';font-weight:700;font-size:13px;letter-spacing:.3px;transition:all .15s ease;}
-  .tabs2 button.active{background:var(--accent-subtle);color:var(--accent);border-color:var(--lineBright);box-shadow:0 0 12px var(--accent-glow);}
+  .tabs2 button{flex:none;padding:8px 14px;border-radius:20px;border:1px solid var(--line);background:var(--panel-dark);color:var(--muted);font-family:var(--font-ui);font-weight:700;font-size:13px;letter-spacing:.3px;transition:all .15s ease;}
+  .tabs2 button.active{background:var(--accent-subtle);color:var(--accent);border-color:var(--lineBright);}
 
   table{width:100%;border-collapse:collapse;font-size:13px;}
   th,td{padding:9px 4px;text-align:center;border-bottom:1px solid var(--lineSoft);}
-  th{color:var(--muted-dark);font-weight:700;font-size:10px;text-transform:uppercase;letter-spacing:1px;}
+  th{color:var(--muted-dark);font-weight:600;font-size:10px;text-transform:uppercase;letter-spacing:.14em;}
   td.tname{text-align:left;font-weight:700;color:var(--silver);}
   tr.qualify td{background:var(--accent-subtle);}
   tr.qualify td.tname{color:var(--accent);box-shadow:inset 2px 0 0 var(--accent);}
-  .grp-head{font-family:'Bebas Neue';font-size:18px;margin:18px 0 6px;color:var(--white);letter-spacing:1.5px;border-left:3px solid var(--accent);padding-left:8px;}
+  .grp-head{font-family:var(--font-display);font-size:18px;margin:18px 0 6px;color:var(--white);letter-spacing:1.5px;border-left:3px solid var(--accent);padding-left:8px;}
 
   .match{display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--panel-dark);border:1px solid var(--lineSoft);border-radius:8px;padding:11px 12px;margin-bottom:8px;box-shadow:inset 0 1px 0 rgba(255,255,255,.03);}
   .match .side{flex:1;font-weight:700;font-size:14px;color:var(--silver);}
@@ -190,24 +208,24 @@
   .match .vs{color:var(--muted-dark);font-size:11px;padding:0 4px;letter-spacing:1px;}
 
   .bracket-round{margin-bottom:16px;}
-  .bracket-title{font-size:11px;color:var(--muted-dark);font-weight:700;margin-bottom:7px;text-transform:uppercase;letter-spacing:1.5px;}
+  .bracket-title{font-size:11px;color:var(--muted-dark);font-weight:600;margin-bottom:7px;text-transform:uppercase;letter-spacing:.14em;}
 
   .empty{text-align:center;padding:34px 10px;color:var(--muted);}
   .empty .ic{font-size:34px;display:block;margin-bottom:8px;}
 
-  .draw-slot{background:var(--panel-dark);border:1px dashed var(--line);border-radius:8px;padding:14px;text-align:center;margin-bottom:8px;font-family:'Bebas Neue';font-size:20px;letter-spacing:1.5px;transition:all .15s;}
+  .draw-slot{background:var(--panel-dark);border:1px dashed var(--line);border-radius:8px;padding:14px;text-align:center;margin-bottom:8px;font-family:var(--font-display);font-size:20px;letter-spacing:1.5px;transition:all .15s;}
   .draw-slot.rolling{color:var(--muted-dark);border-style:solid;}
   .draw-slot.landed{color:var(--accent);border-color:var(--lineBright);border-style:solid;background:var(--accent-subtle);box-shadow:0 0 18px var(--accent-glow), inset 0 1px 0 rgba(255,255,255,.05);animation:pop .35s ease;}
   @keyframes pop{0%{transform:scale(.9);opacity:.4;}60%{transform:scale(1.03);}100%{transform:scale(1);opacity:1;}}
 
   .flip-card{background:var(--panel-dark);border:1px solid var(--line);border-radius:10px;padding:16px;text-align:center;margin-bottom:10px;box-shadow:inset 0 1px 0 rgba(255,255,255,.03);}
-  .flip-card .alias{font-size:12px;color:var(--muted-dark);margin-bottom:4px;letter-spacing:.8px;text-transform:uppercase;}
-  .flip-card .team{font-family:'Bebas Neue';font-size:24px;color:var(--white);opacity:0;transform:rotateY(90deg);transition:all .4s;}
+  .flip-card .alias{font-size:11px;color:var(--muted-dark);margin-bottom:4px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;}
+  .flip-card .team{font-family:var(--font-display);font-size:24px;color:var(--white);opacity:0;transform:rotateY(90deg);transition:all .4s;}
   .flip-card.revealed .team{opacity:1;transform:rotateY(0);color:var(--accent);text-shadow:0 0 16px var(--accent-glow);}
 
   .group-cols{display:flex;gap:10px;}
   .group-col{flex:1;background:var(--panel-dark);border:1px solid var(--line);border-radius:10px;padding:10px;min-height:120px;box-shadow:inset 0 1px 0 rgba(255,255,255,.03);}
-  .group-col h4{font-family:'Bebas Neue';color:var(--accent);margin:0 0 8px;font-size:16px;letter-spacing:1px;}
+  .group-col h4{font-family:var(--font-display);color:var(--accent);margin:0 0 8px;font-size:16px;letter-spacing:1px;}
   .group-col .slot{padding:8px 6px;border-bottom:1px solid var(--lineSoft);font-size:14px;font-weight:700;color:var(--silver);opacity:0;transform:translateX(-8px);transition:all .35s;}
   .group-col .slot.in{opacity:1;transform:translateX(0);}
 
@@ -218,11 +236,24 @@
 
   .champ-banner{text-align:center;padding:28px 10px;background:radial-gradient(80% 100% at 50% 0%, var(--accent-subtle), transparent 70%), linear-gradient(180deg, var(--panel), var(--panel2));}
   .champ-banner .cup{font-size:52px;}
-  .champ-banner h2{font-family:'Bebas Neue';font-size:34px;color:var(--accent);margin:6px 0 0;letter-spacing:1.5px;text-shadow:0 0 22px var(--accent-glow);}
+  .champ-banner h2{font-family:var(--font-display);font-size:34px;color:var(--accent);margin:6px 0 0;letter-spacing:1.5px;text-shadow:0 0 22px var(--accent-glow);}
   .champ-banner p{color:var(--muted);font-size:13px;}
 
   .hist-item{padding:12px 0;border-bottom:1px solid var(--lineSoft);}
-  .hist-item b{font-family:'Bebas Neue';font-size:18px;letter-spacing:1px;}
+  .hist-item b{font-family:var(--font-display);font-size:18px;letter-spacing:1px;}
+
+  /* §15/§17: el isotipo como sello institucional. No compite con el contenido --
+     firma la pieza. Va en un ::after para no pisar el degradado de .card, y reusa
+     el logo.png que ya carga la topbar, así que no agrega ni una petición.
+     ponytail: una clase y tres usos. Si algún día hace falta el sello en una pieza
+     exportable (overlay de stream, tarjeta de jugador), eso es arte, no CSS. */
+  .sello{position:relative;overflow:hidden;}
+  .sello::after{
+    content:'';position:absolute;right:-34px;bottom:-34px;width:170px;height:170px;
+    background:url('assets/logo.png') no-repeat center/contain;
+    opacity:.05;pointer-events:none;z-index:0;
+  }
+  .sello > *{position:relative;z-index:1;}
 
   ::selection{background:var(--accent);color:#050805;}
 
@@ -258,5 +289,5 @@
     box-shadow:0 20px 50px var(--shadow-deep), 0 0 24px var(--red-glow);
   }
   .error-box .material-symbols-outlined{font-size:38px;color:var(--danger);}
-  .error-box h3{margin:8px 0 6px;font-family:'Bebas Neue';letter-spacing:.5px;}
+  .error-box h3{margin:8px 0 6px;font-family:var(--font-display);letter-spacing:.5px;}
   .error-box p{color:var(--muted);font-size:14px;margin:0 0 18px;}

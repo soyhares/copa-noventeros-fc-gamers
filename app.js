@@ -213,7 +213,6 @@ function statusLabel(t){
 
 async function render(){
   setActiveTab();
-  document.getElementById('tname-badge').textContent = CURRENT ? CURRENT.name : 'FC Gamers';
   const st = statusLabel(CURRENT);
   const pillEl = document.getElementById('status-pill');
   pillEl.textContent = st.text; pillEl.className = 'pill '+st.cls;
@@ -228,10 +227,11 @@ function renderHome(){
   const t = CURRENT;
   let html = '';
   html += `<div class="hero">
-    <img class="hero-logo" src="assets/logo.png" alt="Copas Noventeros FC Gamers">
+    <img class="hero-logo" src="assets/logo.png" alt="Noventeros FC Gamers">
     <div class="kicker">TORNEOS ONLINE · 100% GRATUITOS</div>
-    <h1>COPAS<span class="g">NOVENTEROS FC GAMERS</span></h1>
+    <h1>NOVENTEROS<span class="g">FC GAMERS</span></h1>
     <p>Compite. Diviértete. Vive cada copa como se debe.</p>
+    ${t ? `<div class="torneo-activo">${esc(t.name)}</div>` : ''}
   </div>`;
 
   if(!t){
@@ -250,7 +250,7 @@ function renderHome(){
     }
 
     if(t.status==='finished' && t.champion){
-      html += `<div class="champ-banner card"><div class="cup"><span class="material-symbols-outlined">emoji_events</span></div><h2>${esc(playerName(t,t.champion))}</h2><p>Campeón de ${esc(t.name)}</p></div>`;
+      html += `<div class="champ-banner card sello"><div class="cup"><span class="material-symbols-outlined">emoji_events</span></div><h2>${esc(playerName(t,t.champion))}</h2><p>Campeón de ${esc(t.name)}</p></div>`;
     }
   }
 
@@ -452,7 +452,7 @@ function renderTabla(holder,t){
 
 function renderGoleo(holder,t){
   const rows = goleoTable(t);
-  let html = `<div class="card"><table><thead><tr><th style="text-align:left">Jugador</th><th>Goles</th></tr></thead><tbody>`;
+  let html = `<div class="card sello"><table><thead><tr><th style="text-align:left">Jugador</th><th>Goles</th></tr></thead><tbody>`;
   rows.forEach((r,i)=> html += `<tr><td class="tname">${i+1}. ${esc(playerName(t,r.id))}</td><td><b>${r.goals}</b></td></tr>`);
   html += `</tbody></table></div>`;
   holder.innerHTML = html;
@@ -463,7 +463,7 @@ function renderLlave(holder,t){
   let html='';
   const totalRounds = totalRoundsOf(t.bracket);
   t.bracket.rounds.forEach((round,ri)=>{
-    html += `<div class="card bracket-round"><div class="bracket-title">${roundLabel(totalRounds,ri)}</div>`;
+    html += `<div class="card bracket-round sello"><div class="bracket-title">${roundLabel(totalRounds,ri)}</div>`;
     round.partidos.forEach((m,mi)=>{
       html += `<div class="match">
         <span class="side">${esc(playerName(t,m.p1))}</span>
@@ -478,7 +478,7 @@ function renderLlave(holder,t){
     html += `</div>`;
   });
   if(t.status==='finished' && t.champion){
-    html += `<div class="champ-banner card"><div class="cup"><span class="material-symbols-outlined">emoji_events</span></div><h2>${esc(playerName(t,t.champion))}</h2><p>Campeón de ${esc(t.name)}</p></div>`;
+    html += `<div class="champ-banner card sello"><div class="cup"><span class="material-symbols-outlined">emoji_events</span></div><h2>${esc(playerName(t,t.champion))}</h2><p>Campeón de ${esc(t.name)}</p></div>`;
   } else if(ADMIN_UNLOCKED){
     html += `<button class="btn" id="save-bracket">Guardar resultados de llave</button><div id="bracket-msg" style="margin-top:10px;"></div>`;
   }
@@ -838,10 +838,10 @@ function renderAdminTorneos(holder){
 
 function renderAdminLista(holder){
   let html = `<div class="card tight"><b>Clubes válidos</b><p class="small muted">Edita separando por comas.</p>
-    <textarea id="edit-clubs" style="width:100%;min-height:110px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--white);padding:10px;font-family:'Barlow Semi Condensed';">${INDEX.validTeams.clubs.join(', ')}</textarea>
+    <textarea id="edit-clubs" style="width:100%;min-height:110px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--white);padding:10px;font-family:var(--font-ui);">${INDEX.validTeams.clubs.join(', ')}</textarea>
   </div>
   <div class="card tight"><b>Países válidos</b>
-    <textarea id="edit-countries" style="width:100%;min-height:110px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--white);padding:10px;font-family:'Barlow Semi Condensed';">${INDEX.validTeams.countries.join(', ')}</textarea>
+    <textarea id="edit-countries" style="width:100%;min-height:110px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;color:var(--white);padding:10px;font-family:var(--font-ui);">${INDEX.validTeams.countries.join(', ')}</textarea>
   </div>
   <button class="btn" id="save-list">Guardar lista</button>`;
   holder.innerHTML = html;

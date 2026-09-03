@@ -5,3 +5,6 @@ node_modules/
 .firebase/
 firebase-debug.log
 firestore-debug.log
+
+# capturas y trazas del navegador de pruebas
+.playwright-mcp/
