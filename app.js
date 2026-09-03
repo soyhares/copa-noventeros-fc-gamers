@@ -943,7 +943,7 @@ function launchConfetti(){
   const canvas = document.getElementById('confetti-canvas');
   canvas.width = window.innerWidth; canvas.height = window.innerHeight;
   const ctx = canvas.getContext('2d');
-  const colors = ['#c6ff3d','#f3f6ef','#8fcc1f','#5cb8ff'];
+  const colors = ['#31e464','#d85b9b','#4c91c7','#c94d4d','#aeb7af'];
   const pieces = Array.from({length:120}).map(()=>({
     x: Math.random()*canvas.width, y: -20-Math.random()*canvas.height*.5,
     r: 4+Math.random()*5, c: colors[Math.floor(Math.random()*colors.length)],

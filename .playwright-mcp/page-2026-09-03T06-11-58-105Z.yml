@@ -1,0 +1,26 @@
+- generic [ref=f1e2]:
+  - generic [ref=f1e3]:
+    - generic [ref=f1e5]:
+      - generic [ref=f1e6]: COPAS NOVENTEROS v1.0.5
+      - generic [ref=f1e7]: FC Gamers
+    - generic [ref=f1e8]: Sin torneo
+  - main [ref=f1e9]:
+    - generic [ref=f1e27]:
+      - generic [ref=f1e28]: edit_note
+      - heading "Inscripción" [level=3] [ref=f1e30]
+    - generic [ref=f1e31]:
+      - generic [ref=f1e32]: warning
+      - text: No hay torneo activo para inscribirse.
+  - navigation [ref=f1e10]:
+    - button "stadium Inicio" [ref=f1e11] [cursor=pointer]:
+      - generic [ref=f1e12]: stadium
+      - generic [ref=f1e14]: Inicio
+    - button "how_to_reg Inscribirme" [active] [ref=f1e15] [cursor=pointer]:
+      - generic [ref=f1e16]: how_to_reg
+      - generic [ref=f1e18]: Inscribirme
+    - button "trophy Torneo" [ref=f1e19] [cursor=pointer]:
+      - generic [ref=f1e20]: trophy
+      - generic [ref=f1e22]: Torneo
+    - button "lock Admin" [ref=f1e23] [cursor=pointer]:
+      - generic [ref=f1e24]: lock
+      - generic [ref=f1e26]: Admin
