@@ -9,10 +9,10 @@ Firestore holds all state, GitHub Pages serves the files.
 Run locally with any static server (`python3 -m http.server`) — opening
 `index.html` via `file://` breaks the ES module imports.
 
-There is no test suite. The one exception is `node tools/check-liga.mjs`, which slices the
-pure-logic block out of `app.js` (between `function newId()` and the `/* ---- bracket ---- */`
-marker) and asserts on it — `app.js` can't be imported by node directly. Move those markers
-and the script fails loudly.
+There is no test suite. The exceptions are `node tools/check-liga.mjs` and
+`node tools/check-invitacion.mjs`, which both slice the pure-logic block out of `app.js`
+(between `function newId()` and the `/* ---- bracket ---- */` marker) and assert on it —
+`app.js` can't be imported by node directly. Move those markers and the scripts fail loudly.
 
 ## Files
 

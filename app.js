@@ -97,6 +97,31 @@ function attachIndexListener(){
 function newId(){ return 't'+Math.random().toString(36).slice(2,9); }
 function uid(){ return 'p'+Math.random().toString(36).slice(2,9); }
 
+/* ---- invitación ---- */
+// Alfabeto sin caracteres que se confunden al dictar el código por WhatsApp:
+// nada de O/0, nada de I/1/L. Por eso normCodigo() no valida contra este alfabeto:
+// si alguien teclea una O, el código simplemente no existirá en Firestore y el
+// mensaje de "código no encontrado" es más claro que uno de formato.
+const ALFABETO_CODIGO = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+function generarJoinCode(){
+  let s = '';
+  for(let i=0;i<4;i++) s += ALFABETO_CODIGO[Math.floor(Math.random()*ALFABETO_CODIGO.length)];
+  return 'NOV-'+s;
+}
+// El jugador pega el código como le llegó: con prefijo o sin él, en minúsculas, con
+// espacios o guiones raros. El prefijo solo se quita si al quitarlo quedan 4 caracteres;
+// de lo contrario un código que empiece por NOV se comería su propio inicio.
+function normCodigo(v){
+  let s = String(v??'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+  if(s.length===7 && s.startsWith('NOV')) s = s.slice(3);
+  return s.length===4 ? 'NOV-'+s : null;
+}
+// Lista de "mis torneos": sin duplicados por id, y volver a entrar con otro rol
+// (te inscribiste como jugador y después creaste el torneo) actualiza el rol.
+function agregarTorneo(lista, entrada){
+  return [...lista.filter(x=>x.id!==entrada.id), entrada];
+}
+
 /* ================= TOURNAMENT MODEL ================= */
 // Una Liga se modela como un torneo de UN SOLO grupo ('L') sin bracket. Así toda la
 // maquinaria de grupos (computeStandings, goleoTable, carga de marcadores, CSV) se
