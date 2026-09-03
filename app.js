@@ -965,7 +965,10 @@ function launchConfetti(){
 // que no llegó, una lectura que se cortó) termina aquí. Sin esto, esos fallos pasaban
 // en silencio y el admin no se enteraba de que un resultado no se guardó.
 let errorGlobalVisible = false;
-function mostrarErrorGlobal(){
+// TEMPORAL para depurar el reporte de "Generar llave falla en móvil": muestra el
+// detalle técnico en pantalla. Quitar el bloque <details> antes de la próxima
+// versión "oficial" -- no es lo que un usuario final debe ver.
+function mostrarErrorGlobal(detalle){
   if(errorGlobalVisible) return;
   errorGlobalVisible = true;
   const overlay = document.createElement('div');
@@ -975,6 +978,7 @@ function mostrarErrorGlobal(){
     <h3>Algo salió mal</h3>
     <p>No se pudo completar la acción. Espera un momento y vuelve a intentarlo.</p>
     <button class="btn" id="error-ok">Entendido</button>
+    ${detalle ? `<details style="text-align:left;margin-top:14px;"><summary style="cursor:pointer;color:var(--muted);font-size:12px;">Detalle técnico (temporal)</summary><pre style="white-space:pre-wrap;font-size:11px;color:var(--muted);margin-top:8px;">${esc(detalle)}</pre></details>` : ''}
   </div>`;
   document.body.appendChild(overlay);
   overlay.querySelector('#error-ok').onclick = ()=>{ overlay.remove(); errorGlobalVisible=false; };
@@ -985,11 +989,11 @@ function mostrarErrorGlobal(){
 window.addEventListener('unhandledrejection', e=>{
   console.error('[Copas Noventeros] promesa rechazada sin manejar:', e.reason);
   e.preventDefault();
-  mostrarErrorGlobal();
+  mostrarErrorGlobal(String(e.reason && e.reason.stack || e.reason));
 });
 window.addEventListener('error', e=>{
   console.error('[Copas Noventeros] error:', e.error || e.message, e.filename+':'+e.lineno);
-  mostrarErrorGlobal();
+  mostrarErrorGlobal(String((e.error && e.error.stack) || e.message) + '\n' + e.filename + ':' + e.lineno);
 });
 
 /* ================= INDICADOR DE CARGA ================= */
