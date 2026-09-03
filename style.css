@@ -1,7 +1,7 @@
   :root{
     --bg:#090d09; --bg2:#0f150f; --panel:rgba(19,28,20,.74); --panel2:rgba(14,21,15,.78);
     --line:rgba(120,150,120,.22); --lineSoft:rgba(120,150,120,.14);
-    --accent:#c6ff3d; --accent-dim:#8fcc1f; --accent-glow:rgba(198,255,61,.35);
+    --accent:#31e464; --accent-dim:#5DA184; --accent-glow:rgba(49,228,100,.35);
     --white:#f3f6ef; --muted:#a9b8aa; --red:#ff5c5c; --blue:#5cb8ff;
     --r:10px;
   }
