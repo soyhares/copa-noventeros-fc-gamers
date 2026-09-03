@@ -105,6 +105,10 @@ Run workflow**.
 > ⚠️ **Si cambias index.html, style.css o app.js**, sube también el número de `VERSION`
 > en `sw.js` (`copas-v1` → `copas-v2`). El service worker guarda copias de esos archivos
 > y así se asegura de que todos reciban la versión nueva.
+>
+> **Antes de publicar el release**, actualiza también el número que se ve junto al
+> título en `index.html` (`<span class="ver">v1.0.x</span>`) para que coincida con la
+> etiqueta del release.
 
 ## Instalar como app (PWA)
 
