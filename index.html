@@ -50,10 +50,16 @@
 </div>
 <script type="module" src="app.js"></script>
 <script>
-  // Permite instalar la web como app y abrirla sin conexión (el cascarón; los datos
-  // del torneo siguen necesitando internet).
+  // TEMPORAL: mientras se depura un reporte de que un botón falla solo en un
+  // dispositivo, se desregistra cualquier service worker viejo y se borran sus
+  // cachés en vez de registrar uno nuevo -- así ese dispositivo queda obligado a
+  // traer el código fresco en cada carga, sin depender de que el caché se actualice
+  // solo. Revertir a la línea de arriba (registrar sw.js) una vez resuelto.
   if ('serviceWorker' in navigator) {
-    addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
+    navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister()));
+  }
+  if ('caches' in window) {
+    caches.keys().then(claves => claves.forEach(k => caches.delete(k)));
   }
 </script>
 </body>
