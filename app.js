@@ -1082,7 +1082,17 @@ function bindAccionesTorneo(raiz){
   });
 }
 
+// El texto de type=date lo pinta el propio sistema (no hereda font/peso de la app,
+// se ve "delgado" comparado con el resto del formulario), así que en vez de pelear
+// contra WebKit se precarga con hoy: el campo llega con valor sólido y el usuario
+// solo lo cambia si la fecha real es otra.
+function hoyISO(){
+  const d = new Date();
+  const pad = n => String(n).padStart(2,'0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
 function renderAdminTorneos(holder){
+  const hoy = hoyISO();
   let html = `<div class="card tight">
     <b>Crear nuevo torneo</b>
     <label>Nombre</label><input id="nt-name" placeholder="Ej: Copa Verano FC27">
@@ -1098,8 +1108,8 @@ function renderAdminTorneos(holder){
       <label>Partidos</label>
       <select id="nt-vuelta"><option value="">Solo ida</option><option value="1">Ida y vuelta</option></select>
     </div>
-    <label>Fecha del torneo</label><input id="nt-date" type="date">
-    <label>Cierre de inscripción</label><input id="nt-deadline" type="date">
+    <label>Fecha del torneo</label><input id="nt-date" type="date" value="${hoy}">
+    <label>Cierre de inscripción</label><input id="nt-deadline" type="date" value="${hoy}">
     <button class="btn" id="create-t" style="margin-top:14px;">Crear torneo</button>
   </div>`;
   html += `<div class="section-title"><div class="num"><span class="material-symbols-outlined">list_alt</span></div><h3>Mis torneos</h3></div>`;
