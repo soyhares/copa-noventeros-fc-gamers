@@ -237,22 +237,29 @@ function procesarNovedades(id, actual){
   if(!eventos.length) return;
   if(eventos[0].tipo === 'torneo_eliminado'){
     const entrada = leerMisTorneos().find(x=>x.id===id);
-    quitarTorneoEliminado(id);
+    quitarTorneoEliminado(id); // fire-and-forget: onSnapshot no es async, no hay nada que esperar acá
     despacharEvento({tipo:'torneo_eliminado', nombre: entrada ? entrada.nombre : 'el torneo'}, undefined, id);
     return;
   }
   eventos.forEach(ev => despacharEvento(ev, actual, id));
 }
 
-// Mismo camino que ya usa el botón "Eliminar" del admin (bindAccionesTorneo), sin el
-// fDelete (el documento ya no existe) ni la confirmación (esto no lo disparó el usuario
-// de este dispositivo).
-function quitarTorneoEliminado(id){
+// Mismo recorte que el botón "Eliminar" del admin (bindAccionesTorneo): sin el fDelete
+// (el documento ya no existe) ni la confirmación (esto no lo disparó el usuario de este
+// dispositivo). A diferencia de ese botón, esta función es async y su llamador (dentro
+// de procesarNovedades, colgado del onSnapshot síncrono) no la espera — por eso carga
+// CURRENT con loadTournament() antes de reengancharse, igual que el botón, en vez de
+// dejar que el primer snapshot del nuevo listener lo rellene: si no, el tail del
+// onSnapshot viejo (CURRENT=null; render()) todavía en vuelo pintaría un "Sin torneo"
+// de sobra antes de que llegue ese primer snapshot.
+async function quitarTorneoEliminado(id){
   guardarMisTorneos(leerMisTorneos().filter(x=>x.id!==id));
   if(torneoActivoId()===id){
     const resto = leerMisTorneos()[0];
     setTorneoActivoId(resto ? resto.id : null);
+    CURRENT = resto ? await loadTournament(resto.id) : null;
     attachTournamentListener(resto ? resto.id : null);
+    render();
   }
 }
 
