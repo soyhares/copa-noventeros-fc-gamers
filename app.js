@@ -155,11 +155,14 @@ function attachTournamentListener(id){
 }
 function attachIndexListener(){
   onSnapshot(doc(db,'meta','config'), (snap)=>{
-    if(!snap.exists() || isTypingNow() || ANIMANDO) return;
+    if(!snap.exists() || isTypingNow()) return;
     // meta/config ya solo trae las listas válidas de FC26: cuál es el torneo activo
     // vive en el dispositivo (localStorage), no en un índice global.
     const data = snap.data();
     INDEX = { validTeams: (data && data.validTeams) || DEFAULT_TEAMS };
+    // Igual que en el listener del torneo: se actualiza el estado, se posterga el
+    // repintado. Descartar el snapshot dejaría INDEX viejo sin reintento.
+    if(ANIMANDO) return;
     render();
   });
 }
