@@ -128,6 +128,22 @@ function etapasNuevas(t){
   return etapasSorteadas(t).length - (sorteoVisto()[t.id] || 0);
 }
 
+/* ---- mi código de alias (dispositivo) ---- */
+// Qué código conoce este dispositivo para cada alias que reclamó o desbloqueó. Si el
+// dispositivo ya tiene el código correcto para un alias, nunca vuelve a pedírselo.
+const LS_ALIAS = 'noventeros.misAlias';
+function misAliasCodigos(){
+  try{ return JSON.parse(localStorage.getItem(LS_ALIAS)) || {}; }
+  catch(e){ return {}; }   // modo privado o JSON corrupto: se empieza de cero
+}
+function guardarAliasCodigo(alias, codigo){
+  try{
+    const m = misAliasCodigos();
+    m[norm(alias)] = codigo;
+    localStorage.setItem(LS_ALIAS, JSON.stringify(m));
+  }catch(e){}
+}
+
 async function loadIndex(){
   let idx = await fGet('meta','config');
   if(!idx){
