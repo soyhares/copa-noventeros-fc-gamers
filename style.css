@@ -43,16 +43,20 @@
   .n3{font-family:var(--font-ui);font-weight:500;letter-spacing:.02em;}
   .n4{font-family:var(--font-ui);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.14em;}
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
-  html,body{margin:0;padding:0;background:var(--bg);color:var(--white);font-family:var(--font-ui);}
-  /* Dark matte first: el carbón domina. La foto neón queda muy por debajo, como
-     textura y no como fondo protagonista; encima va un halo verde tenue y viñeta. */
+  /* Sin esto, el rebote elástico de iOS al llegar al tope del scroll deja ver un
+     instante lo que hay detrás del documento (el fondo con el logo) justo sobre el
+     topbar, encima del status bar del teléfono. */
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--white);font-family:var(--font-ui);overscroll-behavior-y:none;}
+  /* Dark matte first: el carbón sigue dominando (MARCA.md §07, 70% negro/grafito),
+     pero la foto neón ahora se reconoce como elemento de fondo, no solo como sombra
+     apenas perceptible; encima va un halo verde tenue y viñeta. */
   body{
     min-height:100vh;
     background-color: var(--bg);
     background-image:
       radial-gradient(120% 60% at 50% -10%, var(--accent-subtle), transparent 60%),
       radial-gradient(100% 70% at 50% 100%, rgba(0,0,0,.85), transparent 70%),
-      linear-gradient(rgba(7,9,7,.965), rgba(7,9,7,.985)),
+      linear-gradient(rgba(7,9,7,.80), rgba(7,9,7,.84)),
       url('assets/bg-neon.jpeg');
     background-position: center top, center bottom, center, center top;
     background-size: 100% 100%, 100% 100%, cover, cover;
@@ -175,6 +179,10 @@
     box-shadow:inset 0 2px 6px rgba(0,0,0,.45);transition:border-color .15s ease, box-shadow .15s ease;
   }
   input::placeholder, textarea::placeholder{color:var(--muted-dark);}
+  /* iOS Safari: el control interno de type=date/time trae un ancho mínimo propio que
+     ignora width:100%+border-box y se sale de la tarjeta. appearance:none lo obliga a
+     respetar la caja; el selector nativo sigue funcionando igual al tocar el campo. */
+  input[type="date"], input[type="time"]{-webkit-appearance:none;appearance:none;min-width:0;}
   input:focus, select:focus, textarea:focus{outline:none;border-color:var(--accent-dim);box-shadow:inset 0 2px 6px rgba(0,0,0,.45), 0 0 0 3px var(--accent-subtle);}
   .field-error{color:var(--danger);font-size:12px;margin-top:5px;}
   .field-ok{color:var(--accent);font-size:12px;margin-top:5px;}
@@ -296,6 +304,23 @@
   .error-box .material-symbols-outlined{font-size:38px;color:var(--danger);}
   .error-box h3{margin:8px 0 6px;font-family:var(--font-display);letter-spacing:.5px;}
   .error-box p{color:var(--muted);font-size:14px;margin:0 0 18px;}
+
+  /* ---- modal genérico (reemplaza alert()/confirm() nativos) ---- */
+  .modal-overlay{
+    position:fixed;inset:0;background:rgba(4,6,5,.82);backdrop-filter:blur(4px);
+    display:flex;align-items:center;justify-content:center;padding:20px;z-index:100;
+  }
+  .modal-box{
+    background:linear-gradient(180deg, var(--panel-elevated), var(--panel2));
+    border:1px solid var(--lineBright);border-radius:var(--r);
+    padding:26px 22px;max-width:340px;width:100%;text-align:center;
+    box-shadow:0 20px 50px var(--shadow-deep);
+  }
+  .modal-box .material-symbols-outlined{font-size:38px;color:var(--accent);}
+  .modal-box h3{margin:8px 0 6px;font-family:var(--font-display);letter-spacing:.5px;}
+  .modal-box p{color:var(--muted);font-size:14px;margin:0 0 18px;}
+  .modal-box.danger{border-color:var(--danger);box-shadow:0 20px 50px var(--shadow-deep), 0 0 24px var(--red-glow);}
+  .modal-box.danger .material-symbols-outlined{color:var(--danger);}
 
 /* Tarjeta de invitación. El código se dicta y se teclea: monoespaciado y grande.
    MARCA.md §07 — una etiqueta fija va en --silver, no en --accent. */

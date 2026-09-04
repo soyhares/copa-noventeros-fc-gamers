@@ -817,14 +817,15 @@ function renderAdminPanel(holder){
   if(btn) btn.onclick = async (ev)=> conCarga(ev.currentTarget, 'Cerrando…', async ()=>{
     const fresh = await loadTournament(t.id);
     const nuevo = formatoAjustado(fresh);
-    if(!nuevo){ alert(`Necesitas al menos ${esLiga(fresh)?LIGA_MIN:8} jugadores inscritos para cerrar.`); return; }
+    if(!nuevo){ await mostrarAviso(`Necesitas al menos ${esLiga(fresh)?LIGA_MIN:8} jugadores inscritos para cerrar.`); return; }
     // En liga no hay ajuste de formato ni suplentes: el "formato" es la cantidad
     // de inscritos, y fijarlo deja funcionando tal cual todo lo que lee t.size.
     if(esLiga(fresh)){ fresh.size = fresh.players.length; }
     else if(nuevo !== fresh.size || fresh.players.length > nuevo){
       const fuera = fresh.players.length - nuevo;
       const cola = fuera ? ` y ${fuera} ${fuera>1?'jugadores quedan':'jugador queda'} como ${fuera>1?'suplentes':'suplente'}` : '';
-      if(!confirm(`${fresh.players.length} inscritos: el torneo se ajusta a ${nuevo} equipos${cola}. ¿Continuar?`)) return;
+      const ok = await mostrarConfirmacion(`${fresh.players.length} inscritos: el torneo se ajusta a ${nuevo} equipos${cola}.`, {titulo:'Ajustar formato', icono:'tune'});
+      if(!ok) return;
       fresh.waitlist = [...(fresh.waitlist||[]), ...fresh.players.slice(nuevo)];
       fresh.players = fresh.players.slice(0, nuevo);
       fresh.size = nuevo;
@@ -1065,7 +1066,8 @@ function bindAccionesTorneo(raiz){
     renderAdmin();
   }));
   raiz.querySelectorAll('[data-act="delete"]').forEach(b=> b.onclick = async ()=>{
-    if(!confirm('¿Eliminar este torneo y todos sus datos? Esta acción no se puede deshacer.')) return;
+    const ok = await mostrarConfirmacion('¿Eliminar este torneo y todos sus datos? Esta acción no se puede deshacer.', {titulo:'Eliminar torneo', icono:'delete_forever', textoOk:'Eliminar', peligroso:true});
+    if(!ok) return;
     await conCarga(b, 'Eliminando…', async ()=>{
       await fDelete('tournaments', b.dataset.id);
       guardarMisTorneos(leerMisTorneos().filter(x=>x.id!==b.dataset.id));
@@ -1182,7 +1184,7 @@ function renderAdminLista(holder){
     INDEX.validTeams.clubs = document.getElementById('edit-clubs').value.split(',').map(s=>s.trim()).filter(Boolean);
     INDEX.validTeams.countries = document.getElementById('edit-countries').value.split(',').map(s=>s.trim()).filter(Boolean);
     await saveIndex();
-    alert('Lista actualizada.');
+    await mostrarAviso('Lista actualizada.', {icono:'check_circle'});
   });
 }
 
@@ -1302,6 +1304,44 @@ function launchConfetti(){
 // Red gruesa: cualquier fallo de Firestore que no se maneje en el sitio (un guardado
 // que no llegó, una lectura que se cortó) termina aquí. Sin esto, esos fallos pasaban
 // en silencio y el admin no se enteraba de que un resultado no se guardó.
+// Reemplaza alert()/confirm() nativos: su estilo lo pone el navegador, no la marca,
+// y en iOS bloquean el hilo con una apariencia que no combina con nada del resto de
+// la app. Estas versiones son asíncronas (por eso cada call site ahora usa await) y
+// comparten el lenguaje visual del modal de error de más abajo.
+function mostrarAviso(mensaje, {titulo='Aviso', icono='info'}={}){
+  return new Promise(resolve=>{
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `<div class="modal-box">
+      <span class="material-symbols-outlined">${esc(icono)}</span>
+      <h3>${esc(titulo)}</h3>
+      <p>${esc(mensaje)}</p>
+      <button class="btn" id="modal-ok">Aceptar</button>
+    </div>`;
+    document.body.appendChild(overlay);
+    overlay.querySelector('#modal-ok').onclick = ()=>{ overlay.remove(); resolve(); };
+  });
+}
+function mostrarConfirmacion(mensaje, {titulo='Confirmar', icono='help', textoOk='Continuar', peligroso=false}={}){
+  return new Promise(resolve=>{
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.innerHTML = `<div class="modal-box${peligroso?' danger':''}">
+      <span class="material-symbols-outlined">${esc(icono)}</span>
+      <h3>${esc(titulo)}</h3>
+      <p>${esc(mensaje)}</p>
+      <div class="row" style="margin-top:6px;">
+        <button class="btn ghost" id="modal-cancel">Cancelar</button>
+        <button class="btn${peligroso?' danger':''}" id="modal-confirm">${esc(textoOk)}</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    const cerrar = (v)=>{ overlay.remove(); resolve(v); };
+    overlay.querySelector('#modal-cancel').onclick = ()=>cerrar(false);
+    overlay.querySelector('#modal-confirm').onclick = ()=>cerrar(true);
+  });
+}
+
 let errorGlobalVisible = false;
 function mostrarErrorGlobal(){
   if(errorGlobalVisible) return;
