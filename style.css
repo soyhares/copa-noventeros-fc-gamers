@@ -157,6 +157,7 @@
     position:fixed;top:calc(64px + env(safe-area-inset-top));left:0;right:0;
     max-width:480px;margin:0 auto;z-index:35;pointer-events:none;
     display:flex;flex-direction:column;gap:8px;padding:0 12px;
+    max-height:calc(100vh - 140px);overflow-y:auto;
   }
   .toast-card{
     pointer-events:auto;display:flex;align-items:flex-start;gap:10px;

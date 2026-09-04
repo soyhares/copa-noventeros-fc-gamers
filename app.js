@@ -216,7 +216,7 @@ function attachTournamentListener(id){
   unsubTournament = onSnapshot(doc(db,'tournaments', id), (snap)=>{
     if(isTypingNow()) return; // no interrumpir si alguien está escribiendo
     const actual = snap.exists() ? snap.data() : undefined;
-    procesarNovedades(id, actual);
+    if(procesarNovedades(id, actual)) return; // torneo eliminado: quitarTorneoEliminado ya maneja CURRENT/render
     CURRENT = actual ?? null;
     // Durante una animación se actualiza el estado pero no se repinta: repintar cortaría
     // la película a la mitad. reproducirSorteo llama render() al terminar.
@@ -228,20 +228,25 @@ function attachTournamentListener(id){
 // Único punto que corre diffTorneo contra un snapshot real. Guardar en localStorage acá
 // (no en quien consume el evento) es lo que hace que mostrarlo ya cuente como visto: no
 // hace falta un gesto explícito como en el drawer de sorteo.
+// Devuelve true si esto fue una eliminación de torneo: attachTournamentListener usa el
+// valor para saltarse su propio CURRENT=actual??null; render() en ese caso, porque
+// quitarTorneoEliminado ya se encarga de CURRENT y de renderizar — dejar que ambos
+// corran es lo que causaba el parpadeo "Sin torneo" cuando la precarga tardaba.
 function procesarNovedades(id, actual){
   const anterior = ULTIMO_RESUMEN_NOVEDADES ?? novedadesVisto()[id] ?? null;
   const eventos = diffTorneo(anterior, actual);
   ULTIMO_RESUMEN_NOVEDADES = actual ? resumenTorneo(actual) : null;
   if(actual) marcarNovedadesVisto(id, ULTIMO_RESUMEN_NOVEDADES);
   else borrarNovedadesVisto(id);
-  if(!eventos.length) return;
+  if(!eventos.length) return false;
   if(eventos[0].tipo === 'torneo_eliminado'){
     const entrada = leerMisTorneos().find(x=>x.id===id);
     quitarTorneoEliminado(id); // fire-and-forget: onSnapshot no es async, no hay nada que esperar acá
     despacharEvento({tipo:'torneo_eliminado', nombre: entrada ? entrada.nombre : 'el torneo'}, undefined, id);
-    return;
+    return true;
   }
-  eventos.forEach(ev => despacharEvento(ev, actual, id));
+  eventos.forEach((ev, i) => despacharEvento(ev, actual, id, i));
+  return false;
 }
 
 // Mismo recorte que el botón "Eliminar" del admin (bindAccionesTorneo): sin el fDelete
@@ -257,7 +262,17 @@ async function quitarTorneoEliminado(id){
   if(torneoActivoId()===id){
     const resto = leerMisTorneos()[0];
     setTorneoActivoId(resto ? resto.id : null);
-    CURRENT = resto ? await loadTournament(resto.id) : null;
+    if(resto){
+      try{ CURRENT = await loadTournament(resto.id); }
+      catch(e){
+        // Precarga best-effort: si falla, el propio listener nuevo trae el estado
+        // con su primer snapshot igual. No dejar que esto bloquee el reenganche ni
+        // dispare el modal global de error por un simple hipo de red.
+        console.error('[Copas Noventeros] no se pudo precargar el torneo de respaldo tras eliminar:', e);
+      }
+    } else {
+      CURRENT = null;
+    }
     attachTournamentListener(resto ? resto.id : null);
     render();
   }
@@ -266,14 +281,14 @@ async function quitarTorneoEliminado(id){
 // Visible: toast. Segundo plano con permiso concedido y soporte del navegador:
 // notificación nativa. Sin permiso o sin soporte, esta capa simplemente no dispara nada
 // — límite conocido (depende de que la pestaña siga viva), no es un error.
-function despacharEvento(ev, t, id){
+function despacharEvento(ev, t, id, i=0){
   const texto = textoEvento(ev, t);
   if(document.visibilityState === 'visible'){
     encolarToast(ev, texto);
   } else if(typeof Notification !== 'undefined' && Notification.permission === 'granted' && 'serviceWorker' in navigator){
     navigator.serviceWorker.ready.then(reg => reg.showNotification(texto.titulo, {
-      body: texto.cuerpo, icon:'assets/icon-192.png', tag:'noventeros-'+id
-    }));
+      body: texto.cuerpo, icon:'assets/icon-192.png', tag:'noventeros-'+id+'-'+i
+    })).catch(()=>{});
   }
 }
 
@@ -290,7 +305,9 @@ function textoEvento(ev, t){
     return {titulo:'Resultado cargado', cuerpo:`${nombre(ev.p1)} ${ev.s1}-${ev.s2} ${nombre(ev.p2)}`, icono:'sports_soccer'};
   }
   if(ev.tipo==='fase'){
-    return {titulo:'Avanzó el torneo', cuerpo: statusLabel({status:ev.a}).text, icono:'timeline'};
+    // Pasar t con el status pisado (no un objeto suelto): statusLabel branchea en
+    // esLiga(t), que mira t.mode — sin eso, toda Liga leería "Fase de grupos".
+    return {titulo:'Avanzó el torneo', cuerpo: statusLabel(t ? {...t, status:ev.a} : {status:ev.a}).text, icono:'timeline'};
   }
   if(ev.tipo==='campeon'){
     return {titulo:'¡Hay campeón!', cuerpo: t ? playerName(t, ev.jugadorId) : ev.jugadorId, icono:'emoji_events'};
@@ -699,6 +716,7 @@ function renderMisTorneos(){
     const vivos = pares.filter(({t})=> t!=null);
     if(vivos.length !== pares.length){
       guardarMisTorneos(vivos.map(({x})=>x));
+      pares.filter(({t})=> t==null).forEach(({x})=> borrarNovedadesVisto(x.id));
     }
     // Después de purgar: si el torneo activo fue borrado, limpiar la referencia.
     const activo = torneoActivoId();
@@ -728,6 +746,7 @@ function renderMisTorneos(){
       if(!t){
         // El organizador lo borró justo ahora: sacarlo del dispositivo en vez de dejar un ítem fantasma.
         guardarMisTorneos(leerMisTorneos().filter(x=>x.id!==id));
+        borrarNovedadesVisto(id);
         renderMisTorneos();
         return;
       }
@@ -801,6 +820,17 @@ async function intentarRegistro(tournamentId, {alias, club, country}){
     console.error('[Copas Noventeros] no se pudo reclamar el alias (la inscripción sí se guardó):', e);
   }
   return {ok:true};
+}
+
+// Mismo gesto de click que confirma la inscripción, en cualquiera de los dos caminos
+// que pueden confirmarla: si el navegador no soporta Notification, o el usuario ya
+// decidió antes (granted/denied), no hay nada que pedir. Se llama DESPUÉS de cerrar el
+// modal de confirmación (no antes ni en simultáneo) para no superponer dos diálogos del
+// navegador a la vez — el del código de alias no se puede recuperar si queda tapado.
+function pedirPermisoNotificaciones(){
+  if(typeof Notification !== 'undefined' && Notification.permission === 'default'){
+    Notification.requestPermission();
+  }
 }
 
 function renderRegister(){
@@ -891,14 +921,8 @@ function renderRegister(){
     // después. El modal vive fuera de #main y espera a que el jugador lo cierre.
     const mensaje = '¡Inscripción confirmada! Nos vemos en la cancha.'
       + (resultado.codigoNuevo ? ` Guardá este código por si usás este alias desde otro dispositivo: ${resultado.codigoNuevo} (no es una contraseña, solo evita que otro jugador use tu alias por error).` : '');
-    // Mismo gesto de click que confirma la inscripción: si el navegador no soporta
-    // Notification, o el usuario ya decidió antes (granted/denied), no hay nada que
-    // pedir. Sin permiso, la capa de segundo plano de las notificaciones simplemente
-    // no dispara nada.
-    if(typeof Notification !== 'undefined' && Notification.permission === 'default'){
-      Notification.requestPermission();
-    }
     await mostrarAviso(mensaje, {titulo:'Listo', icono:'check_circle'});
+    pedirPermisoNotificaciones();
     render();
   });
 }
@@ -1210,15 +1234,23 @@ function renderDrawerAlias(){
       return;
     }
     await mostrarAviso('¡Inscripción confirmada! Nos vemos en la cancha.', {titulo:'Listo', icono:'check_circle'});
+    pedirPermisoNotificaciones();
     render();
   });
 }
 
 /* ---- toasts: cola de avisos, apilan y autodesaparecen ---- */
+// Tope de 6: un cold-open puede traer muchos eventos de golpe (una etapa entera de
+// grupos que te perdiste). Sin tope, encolarToast pintaría una pared de tarjetas que
+// se sale de la pantalla. Las que no llegan a mostrarse ya están marcadas "vistas" —
+// mismo trato que la capa de segundo plano sin permiso: perderse el aviso visual no
+// significa perderse el evento en sí (seguís pudiendo verlo entrando al torneo).
+const TOASTS_MAX = 6;
 let TOASTS = [];
 function encolarToast(ev, texto){
   const id = 'tst'+Math.random().toString(36).slice(2,9);
   TOASTS.push({id, ev, texto});
+  if(TOASTS.length > TOASTS_MAX) TOASTS = TOASTS.slice(TOASTS.length - TOASTS_MAX);
   renderToasts();
   setTimeout(()=>{ TOASTS = TOASTS.filter(x=>x.id!==id); renderToasts(); }, 5000);
 }
@@ -1240,7 +1272,7 @@ function renderToasts(){
 function navegarDesdeToast(ev){
   if(ev.tipo==='resultado'){ VIEW='tournament'; SUBVIEW_TOURN='grupos'; }
   else if(ev.tipo==='fase'){ VIEW='tournament'; SUBVIEW_TOURN = ev.a==='playoffs' ? 'llave' : 'grupos'; }
-  else if(ev.tipo==='campeon'){ VIEW='tournament'; SUBVIEW_TOURN='tabla'; }
+  else if(ev.tipo==='campeon'){ VIEW='tournament'; SUBVIEW_TOURN = (CURRENT && esLiga(CURRENT)) ? 'tabla' : 'llave'; }
   else return;
   render();
 }
@@ -1632,6 +1664,7 @@ function bindAccionesTorneo(raiz){
     await conCarga(b, 'Eliminando…', async ()=>{
       await fDelete('tournaments', b.dataset.id);
       guardarMisTorneos(leerMisTorneos().filter(x=>x.id!==b.dataset.id));
+      borrarNovedadesVisto(b.dataset.id);
       if(torneoActivoId()===b.dataset.id){
         const resto = leerMisTorneos()[0];
         setTorneoActivoId(resto ? resto.id : null);
