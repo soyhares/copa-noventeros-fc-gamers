@@ -273,18 +273,22 @@ function despacharEvento(ev, t, id){
 // Único lugar que traduce cada tipo de evento a texto — toast y showNotification
 // muestran lo mismo, solo cambia el contenedor. Reusa el mapa de statusLabel para no
 // duplicar las etiquetas de fase.
+// icono: solo lo usa el toast (renderToasts) — showNotification() del navegador ya
+// lleva su propio icono fijo (assets/icon-192.png), un glifo de Material Symbols no
+// tiene sentido ahí. Se reusan íconos que la app ya usa en el mismo contexto: emoji_events
+// es el mismo del champ-banner, delete_forever el mismo del diálogo de confirmar borrado.
 function textoEvento(ev, t){
   if(ev.tipo==='resultado'){
     const nombre = pid => t ? playerName(t,pid) : pid;
-    return {titulo:'Resultado cargado', cuerpo:`${nombre(ev.p1)} ${ev.s1}-${ev.s2} ${nombre(ev.p2)}`};
+    return {titulo:'Resultado cargado', cuerpo:`${nombre(ev.p1)} ${ev.s1}-${ev.s2} ${nombre(ev.p2)}`, icono:'sports_soccer'};
   }
   if(ev.tipo==='fase'){
-    return {titulo:'Avanzó el torneo', cuerpo: statusLabel({status:ev.a}).text};
+    return {titulo:'Avanzó el torneo', cuerpo: statusLabel({status:ev.a}).text, icono:'timeline'};
   }
   if(ev.tipo==='campeon'){
-    return {titulo:'¡Hay campeón!', cuerpo: t ? playerName(t, ev.jugadorId) : ev.jugadorId};
+    return {titulo:'¡Hay campeón!', cuerpo: t ? playerName(t, ev.jugadorId) : ev.jugadorId, icono:'emoji_events'};
   }
-  return {titulo:'Torneo eliminado', cuerpo:`El organizador eliminó "${ev.nombre}".`};
+  return {titulo:'Torneo eliminado', cuerpo:`El organizador eliminó "${ev.nombre}".`, icono:'delete_forever'};
 }
 function attachIndexListener(){
   onSnapshot(doc(db,'meta','config'), (snap)=>{
@@ -1208,7 +1212,8 @@ function renderToasts(){
   const el = document.getElementById('toasts');
   if(!el) return;
   el.innerHTML = TOASTS.map(({id,texto})=>`<div class="toast-card" data-toast="${id}">
-    <b>${esc(texto.titulo)}</b><span>${esc(texto.cuerpo)}</span>
+    <span class="material-symbols-outlined">${esc(texto.icono || 'notifications')}</span>
+    <div class="tc-text"><b>${esc(texto.titulo)}</b><span>${esc(texto.cuerpo)}</span></div>
   </div>`).join('');
   el.querySelectorAll('[data-toast]').forEach(card => card.onclick = () => {
     const item = TOASTS.find(x=>x.id===card.dataset.toast);

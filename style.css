@@ -159,15 +159,16 @@
     display:flex;flex-direction:column;gap:8px;padding:0 12px;
   }
   .toast-card{
-    pointer-events:auto;display:flex;flex-direction:column;gap:2px;
+    pointer-events:auto;display:flex;align-items:flex-start;gap:10px;
     padding:12px 14px;border-radius:14px;background:var(--panel-elevated);
     border:1px solid var(--lineBright);cursor:pointer;
     box-shadow:0 10px 30px var(--shadow-deep), 0 0 20px var(--accent-glow);
-    animation:toast-in .18s ease;
+    animation:pop .35s ease;
   }
-  .toast-card b{font-size:13px;color:var(--accent);}
-  .toast-card span{font-size:12px;color:var(--silver);}
-  @keyframes toast-in{ from{opacity:0;transform:translateY(-6px);} to{opacity:1;transform:translateY(0);} }
+  .toast-card .material-symbols-outlined{color:var(--accent);font-size:20px;flex-shrink:0;margin-top:1px;}
+  .toast-card .tc-text{display:flex;flex-direction:column;gap:2px;min-width:0;}
+  .toast-card .tc-text b{font-size:13px;color:var(--accent);}
+  .toast-card .tc-text span{font-size:12px;color:var(--silver);}
 
   .card{
     background:linear-gradient(180deg, var(--panel), var(--panel2));
