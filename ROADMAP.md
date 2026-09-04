@@ -29,7 +29,7 @@ la sesión activa en vez de un rol cacheado por dispositivo, status bar y scroll
 PWA instalada, y campos de fecha precargados con hoy en el formulario de creación.
 
 ### B · Sorteo visible para todos
-**Estado:** plan · **Depende de:** A · **Spec:** [design](docs/superpowers/specs/2026-09-04-B-sorteo-visible-design.md) · **Plan:** [5 tareas](docs/superpowers/plans/2026-09-04-B-sorteo-visible.md)
+**Estado:** hecho · **Depende de:** A · **Spec:** [design](docs/superpowers/specs/2026-09-04-B-sorteo-visible-design.md) · **Plan:** [5 tareas](docs/superpowers/plans/2026-09-04-B-sorteo-visible.md)
 
 Sorteo **reproducido**, no en vivo: el resultado ya está en Firestore y el jugador lo ve
 animado cuando entra. Se parten `runDrawTeams`/`runDrawAssign`/`runDrawGroups` en
