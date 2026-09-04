@@ -624,12 +624,23 @@ async function intentarRegistro(tournamentId, {alias, club, country}){
   // (ej. se cortó la conexión), el jugador ya quedó inscrito — en el peor caso alguien
   // más podría reclamar el alias antes que él la próxima vez, degradación aceptable en
   // vez de sumar una transacción para un caso raro.
-  if(!(norm(alias) in await loadAliases())){
-    const codigo = generarCodigoAlias();
-    const registro = await loadAliases();
-    await saveAliases({...registro, [norm(alias)]: codigo});
-    guardarAliasCodigo(alias, codigo);
-    return {ok:true, codigoNuevo:codigo};
+  //
+  // Best-effort: la inscripción YA se guardó arriba. Si esto falla (ej. se cortó la
+  // conexión), el jugador queda inscrito igual — a lo sumo alguien más reclama este
+  // alias antes que él la próxima vez. Es la única excepción admitida a la regla de
+  // "nunca tragar errores de escritura": la escritura que de verdad importa (la
+  // inscripción) ya está confirmada, y silenciar esto evita mostrarle al jugador un
+  // modal de error después de una operación que en los hechos salió bien.
+  try{
+    if(!(norm(alias) in await loadAliases())){
+      const codigo = generarCodigoAlias();
+      const registro = await loadAliases();
+      await saveAliases({...registro, [norm(alias)]: codigo});
+      guardarAliasCodigo(alias, codigo);
+      return {ok:true, codigoNuevo:codigo};
+    }
+  }catch(e){
+    console.error('[Copas Noventeros] no se pudo reclamar el alias (la inscripción sí se guardó):', e);
   }
   return {ok:true};
 }
@@ -960,6 +971,7 @@ function renderSorteo(holder, t){
 // taparle el drawer con el aviso de otro torneo.
 let DRAWER_ALIAS = null;
 function renderDrawer(){
+  if(DRAWER_ALIAS && (VIEW !== 'register' || !CURRENT || CURRENT.id !== DRAWER_ALIAS.tournamentId)) DRAWER_ALIAS = null;
   if(DRAWER_ALIAS) return renderDrawerAlias();
   renderDrawerSorteo();
 }
@@ -1025,6 +1037,7 @@ function renderDrawerAlias(){
       render();
       return;
     }
+    await mostrarAviso('¡Inscripción confirmada! Nos vemos en la cancha.', {titulo:'Listo', icono:'check_circle'});
     render();
   });
 }

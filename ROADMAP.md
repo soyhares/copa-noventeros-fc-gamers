@@ -45,7 +45,7 @@ del jugador, no solo desde admin. Más `node tools/check-sorteo.mjs`.
 ### C · Alias protegido
 **Estado:** hecho · **Depende de:** A · **Spec:** [design](docs/superpowers/specs/2026-09-04-C-alias-protegido-design.md) · **Plan:** [6 tareas](docs/superpowers/plans/2026-09-04-C-alias-protegido.md)
 
-Registro global `meta/aliases/{alias}` con código de protección. Mismo dispositivo: sale
+Registro global `meta/aliases` (documento único) con código de protección. Mismo dispositivo: sale
 de `localStorage`, invisible. Otro dispositivo: pide el código. Da sentido al salón de la
 fama común — "ElCraque22" es siempre la misma persona. Con las reglas abiertas el código
 es legible: **no es seguridad**, es el mismo tope de velocidad que el PIN, y así hay que
