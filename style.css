@@ -234,6 +234,11 @@
   .lock-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 10px;text-align:center;}
   .lock-screen .ic{font-size:40px;margin-bottom:10px;}
 
+  /* El acceso del organizador es una acción, no un estado: sin glow en reposo.
+     MARCA.md §08 — el neon marca estado o momento, no decora una superficie quieta. */
+  .lock-screen .btn { width:100%; max-width:280px; }
+  .lock-screen p { max-width:320px; margin-inline:auto; }
+
   .champ-banner{text-align:center;padding:28px 10px;background:radial-gradient(80% 100% at 50% 0%, var(--accent-subtle), transparent 70%), linear-gradient(180deg, var(--panel), var(--panel2));}
   .champ-banner .cup{font-size:52px;}
   .champ-banner h2{font-family:var(--font-display);font-size:34px;color:var(--accent);margin:6px 0 0;letter-spacing:1.5px;text-shadow:0 0 22px var(--accent-glow);}
@@ -291,3 +296,15 @@
   .error-box .material-symbols-outlined{font-size:38px;color:var(--danger);}
   .error-box h3{margin:8px 0 6px;font-family:var(--font-display);letter-spacing:.5px;}
   .error-box p{color:var(--muted);font-size:14px;margin:0 0 18px;}
+
+/* Tarjeta de invitación. El código se dicta y se teclea: monoespaciado y grande.
+   MARCA.md §07 — una etiqueta fija va en --silver, no en --accent. */
+.invite { text-align:center; }
+.invite-code{
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 30px; font-weight: 700; letter-spacing: .14em;
+  color: var(--silver); margin: 10px 0 14px;
+}
+.invite-actions{ display:flex; gap:8px; justify-content:center; flex-wrap:wrap; }
+/* El verde solo en el momento de copiar (MARCA.md §08: estado o momento, nunca reposo). */
+.btn.small.ghost.ok{ color: var(--accent); border-color: var(--accent); }
