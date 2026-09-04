@@ -204,17 +204,87 @@ async function loadAliases(){ const a = await fGet('meta','aliases'); return (a 
 async function saveAliases(mapa){ await fSet('meta','aliases', {items:mapa}); }
 
 /* ---- suscripciones en tiempo real (reemplazan el polling) ---- */
+// Resumen en memoria de la última snapshot que ya procesamos para detectar novedades.
+// Se resetea cada vez que attachTournamentListener cambia de torneo: mientras valga
+// null, el próximo snapshot que llegue se diffea contra localStorage en vez de memoria
+// — así "recién abierto" y "sigue mirando con la app abierta" comparten el mismo motor.
+let ULTIMO_RESUMEN_NOVEDADES = null;
 function attachTournamentListener(id){
   if(unsubTournament){ unsubTournament(); unsubTournament=null; }
+  ULTIMO_RESUMEN_NOVEDADES = null;
   if(!id){ CURRENT = null; return; }
   unsubTournament = onSnapshot(doc(db,'tournaments', id), (snap)=>{
     if(isTypingNow()) return; // no interrumpir si alguien está escribiendo
-    CURRENT = snap.exists() ? snap.data() : null;
+    const actual = snap.exists() ? snap.data() : undefined;
+    procesarNovedades(id, actual);
+    CURRENT = actual ?? null;
     // Durante una animación se actualiza el estado pero no se repinta: repintar cortaría
     // la película a la mitad. reproducirSorteo llama render() al terminar.
     if(ANIMANDO) return;
     render();
   });
+}
+
+// Único punto que corre diffTorneo contra un snapshot real. Guardar en localStorage acá
+// (no en quien consume el evento) es lo que hace que mostrarlo ya cuente como visto: no
+// hace falta un gesto explícito como en el drawer de sorteo.
+function procesarNovedades(id, actual){
+  const anterior = ULTIMO_RESUMEN_NOVEDADES ?? novedadesVisto()[id] ?? null;
+  const eventos = diffTorneo(anterior, actual);
+  ULTIMO_RESUMEN_NOVEDADES = actual ? resumenTorneo(actual) : null;
+  if(actual) marcarNovedadesVisto(id, ULTIMO_RESUMEN_NOVEDADES);
+  else borrarNovedadesVisto(id);
+  if(!eventos.length) return;
+  if(eventos[0].tipo === 'torneo_eliminado'){
+    const entrada = leerMisTorneos().find(x=>x.id===id);
+    quitarTorneoEliminado(id);
+    despacharEvento({tipo:'torneo_eliminado', nombre: entrada ? entrada.nombre : 'el torneo'}, undefined, id);
+    return;
+  }
+  eventos.forEach(ev => despacharEvento(ev, actual, id));
+}
+
+// Mismo camino que ya usa el botón "Eliminar" del admin (bindAccionesTorneo), sin el
+// fDelete (el documento ya no existe) ni la confirmación (esto no lo disparó el usuario
+// de este dispositivo).
+function quitarTorneoEliminado(id){
+  guardarMisTorneos(leerMisTorneos().filter(x=>x.id!==id));
+  if(torneoActivoId()===id){
+    const resto = leerMisTorneos()[0];
+    setTorneoActivoId(resto ? resto.id : null);
+    attachTournamentListener(resto ? resto.id : null);
+  }
+}
+
+// Visible: toast. Segundo plano con permiso concedido y soporte del navegador:
+// notificación nativa. Sin permiso o sin soporte, esta capa simplemente no dispara nada
+// — límite conocido (depende de que la pestaña siga viva), no es un error.
+function despacharEvento(ev, t, id){
+  const texto = textoEvento(ev, t);
+  if(document.visibilityState === 'visible'){
+    encolarToast(ev, texto);
+  } else if(typeof Notification !== 'undefined' && Notification.permission === 'granted' && 'serviceWorker' in navigator){
+    navigator.serviceWorker.ready.then(reg => reg.showNotification(texto.titulo, {
+      body: texto.cuerpo, icon:'assets/icon-192.png', tag:'noventeros-'+id
+    }));
+  }
+}
+
+// Único lugar que traduce cada tipo de evento a texto — toast y showNotification
+// muestran lo mismo, solo cambia el contenedor. Reusa el mapa de statusLabel para no
+// duplicar las etiquetas de fase.
+function textoEvento(ev, t){
+  if(ev.tipo==='resultado'){
+    const nombre = pid => t ? playerName(t,pid) : pid;
+    return {titulo:'Resultado cargado', cuerpo:`${nombre(ev.p1)} ${ev.s1}-${ev.s2} ${nombre(ev.p2)}`};
+  }
+  if(ev.tipo==='fase'){
+    return {titulo:'Avanzó el torneo', cuerpo: statusLabel({status:ev.a}).text};
+  }
+  if(ev.tipo==='campeon'){
+    return {titulo:'¡Hay campeón!', cuerpo: t ? playerName(t, ev.jugadorId) : ev.jugadorId};
+  }
+  return {titulo:'Torneo eliminado', cuerpo:`El organizador eliminó "${ev.nombre}".`};
 }
 function attachIndexListener(){
   onSnapshot(doc(db,'meta','config'), (snap)=>{
