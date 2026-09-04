@@ -620,6 +620,17 @@ async function intentarRegistro(tournamentId, {alias, club, country}){
   if(countryTaken(fresh, country)) return {ok:false, campo:'country', error:'Ese país ya fue propuesto por otro jugador.'};
   fresh.players.push({id:uid(), alias, club, country, assignedTeam:null});
   await saveTournament(fresh);
+  // Reclamo del alias: va DESPUÉS de que la inscripción ya se guardó. Si esto falla
+  // (ej. se cortó la conexión), el jugador ya quedó inscrito — en el peor caso alguien
+  // más podría reclamar el alias antes que él la próxima vez, degradación aceptable en
+  // vez de sumar una transacción para un caso raro.
+  if(!(norm(alias) in await loadAliases())){
+    const codigo = generarCodigoAlias();
+    const registro = await loadAliases();
+    await saveAliases({...registro, [norm(alias)]: codigo});
+    guardarAliasCodigo(alias, codigo);
+    return {ok:true, codigoNuevo:codigo};
+  }
   return {ok:true};
 }
 
@@ -685,6 +696,16 @@ function renderRegister(){
     else if(!countryMatch){ errCountry.textContent='Ese país no existe en la lista válida de FC26.'; formatoOk=false; }
     if(!formatoOk) return;
 
+    const registroGlobal = await loadAliases();
+    const codigoConocido = misAliasCodigos()[norm(alias)];
+    if(registroGlobal[norm(alias)] && registroGlobal[norm(alias)] !== codigoConocido){
+      // Alias protegido por otra persona (u otro dispositivo): no se escribe nada
+      // todavía, se abre el drawer a pedir el código.
+      DRAWER_ALIAS = {tournamentId: t.id, alias, club: clubMatch, country: countryMatch};
+      render();
+      return;
+    }
+
     const resultado = await intentarRegistro(t.id, {alias, club:clubMatch, country:countryMatch});
     if(!resultado.ok){
       if(resultado.campo==='alias') errAlias.textContent = resultado.error;
@@ -693,7 +714,8 @@ function renderRegister(){
       else regMsg.innerHTML = `<span class="field-error">${esc(resultado.error)}</span>`;
       return;
     }
-    regMsg.innerHTML = '<span class="field-ok"><span class="material-symbols-outlined" style="font-size:1em;">check_circle</span> ¡Inscripción confirmada! Nos vemos en la cancha.</span>';
+    regMsg.innerHTML = '<span class="field-ok"><span class="material-symbols-outlined" style="font-size:1em;">check_circle</span> ¡Inscripción confirmada! Nos vemos en la cancha.</span>'
+      + (resultado.codigoNuevo ? `<br><span class="small muted">Guardá este código por si usás este alias desde otro dispositivo: <b>${esc(resultado.codigoNuevo)}</b> (no es una contraseña, solo evita que otro jugador use tu alias por error).</span>` : '');
     setTimeout(()=>render(), 700);
   });
 }
@@ -965,6 +987,46 @@ function renderDrawerSorteo(){
   };
   // Cerrar es definitivo: el sorteo queda igual a un toque, en la pestaña Sorteo.
   el.querySelector('#ds-x').onclick = () => { marcarSorteoVisto(t); render(); };
+}
+
+// El pedido de código que abre el submit de inscripción cuando el alias ya está
+// protegido por otro dispositivo. "Cancelar" no deshace nada: el formulario de
+// inscripción sigue intacto detrás, solo se limpia el pedido pendiente.
+function renderDrawerAlias(){
+  const el = document.getElementById('drawer');
+  const pedido = DRAWER_ALIAS;
+  el.innerHTML = `<div class="drawer-card" style="align-items:flex-start;flex-direction:column;gap:10px;">
+    <div class="ds-text">
+      <b>Este alias ya está protegido</b>
+      <span class="small muted">Alguien ya usa "${esc(pedido.alias)}" en otro dispositivo. Si sos vos, escribí el código que guardaste.</span>
+    </div>
+    <input id="da-codigo" placeholder="Código" maxlength="4" style="text-transform:uppercase;">
+    <div id="da-error" class="field-error"></div>
+    <div class="row" style="width:100%;gap:8px;">
+      <button class="btn ghost" id="da-cancelar" style="flex:1;">Cancelar</button>
+      <button class="btn" id="da-confirmar" style="flex:1;">Confirmar</button>
+    </div>
+  </div>`;
+  el.querySelector('#da-cancelar').onclick = () => { DRAWER_ALIAS = null; render(); };
+  el.querySelector('#da-confirmar').onclick = async (ev) => conCarga(ev.currentTarget, 'Verificando…', async ()=>{
+    const inputEl = document.getElementById('da-codigo');
+    const errorEl = document.getElementById('da-error');
+    const codigo = inputEl.value.trim().toUpperCase();
+    const registro = await loadAliases();
+    if(registro[norm(pedido.alias)] !== codigo){
+      errorEl.textContent = 'Código incorrecto.';
+      return;
+    }
+    guardarAliasCodigo(pedido.alias, codigo);
+    const resultado = await intentarRegistro(pedido.tournamentId, pedido);
+    DRAWER_ALIAS = null;
+    if(!resultado.ok){
+      await mostrarAviso(resultado.error, {titulo:'No se pudo completar', icono:'error'});
+      render();
+      return;
+    }
+    render();
+  });
 }
 
 /* ================= ADMIN ================= */
