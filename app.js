@@ -107,8 +107,26 @@ function setTorneoActivoId(id){
   try{ id ? localStorage.setItem(LS_ACTIVO, id) : localStorage.removeItem(LS_ACTIVO); }catch(e){}
 }
 
+/* ---- sorteo visto (dispositivo) ---- */
+// Cuántas etapas del sorteo ya vio (o descartó) este dispositivo, por torneo. Es un
+// número y no un set porque las etapas siempre avanzan en orden.
 const LS_SORTEO = 'noventeros.sorteoVisto';
-function marcarSorteoVisto(t){ /* Tarea 4 */ }
+function sorteoVisto(){
+  try{ return JSON.parse(localStorage.getItem(LS_SORTEO)) || {}; }
+  catch(e){ return {}; }   // modo privado o JSON corrupto: se empieza de cero
+}
+function marcarSorteoVisto(t){
+  if(!t) return;
+  try{
+    const visto = sorteoVisto();
+    visto[t.id] = etapasSorteadas(t).length;
+    localStorage.setItem(LS_SORTEO, JSON.stringify(visto));
+  }catch(e){}
+}
+function etapasNuevas(t){
+  if(!t) return 0;
+  return etapasSorteadas(t).length - (sorteoVisto()[t.id] || 0);
+}
 
 async function loadIndex(){
   let idx = await fGet('meta','config');
@@ -399,6 +417,7 @@ async function render(){
   const st = statusLabel(CURRENT);
   const pillEl = document.getElementById('status-pill');
   pillEl.textContent = st.text; pillEl.className = 'pill '+st.cls;
+  renderDrawerSorteo();
 
   if(VIEW==='home') return renderHome();
   if(VIEW==='register') return renderRegister();
@@ -835,6 +854,31 @@ function renderSorteo(holder, t){
   </div>`;
   holder.querySelector('#ver-sorteo').onclick = () => reproducirSorteo(holder, t, 0);
   if(desde !== null) reproducirSorteo(holder, t, desde);
+}
+
+// Vive fuera de #main para sobrevivir el cambio de vista; render() lo repinta siempre.
+function renderDrawerSorteo(){
+  const el = document.getElementById('drawer');
+  const t = CURRENT;
+  if(!t || ANIMANDO || etapasNuevas(t) <= 0){ el.innerHTML = ''; return; }
+  const visto = sorteoVisto()[t.id] || 0;
+  const n = etapasNuevas(t);
+  el.innerHTML = `<div class="drawer-sorteo">
+    <div class="ds-text">
+      <b>${n === 1 ? 'Se sorteó una etapa nueva' : `Se sortearon ${n} etapas nuevas`}</b>
+      <span class="small muted">${esc(t.name || '')}</span>
+    </div>
+    <button class="btn small" id="ds-ver">Ver sorteo</button>
+    <button class="ds-x" id="ds-x" aria-label="Cerrar sin ver el sorteo">✕</button>
+  </div>`;
+  el.querySelector('#ds-ver').onclick = () => {
+    AUTOPLAY_DESDE = visto;
+    marcarSorteoVisto(t);
+    VIEW = 'tournament'; SUBVIEW_TOURN = 'sorteo';
+    render();
+  };
+  // Cerrar es definitivo: el sorteo queda igual a un toque, en la pestaña Sorteo.
+  el.querySelector('#ds-x').onclick = () => { marcarSorteoVisto(t); render(); };
 }
 
 /* ================= ADMIN ================= */
