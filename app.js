@@ -1290,7 +1290,10 @@ async function boot(){
     // de direcciones, para que recargar o compartir la URL no reintente unirse.
     const codigoUrl = new URLSearchParams(location.search).get('j');
     if(codigoUrl){
-      await withTimeout(unirseACodigo(codigoUrl), 8000);
+      // Si la invitación falla (red inestable, timeout), la app igual tiene que arrancar:
+      // el jugador entra sin torneo y puede pegar el código a mano desde Inicio.
+      try{ await withTimeout(unirseACodigo(codigoUrl), 8000); }
+      catch(e){ /* la invitación se pierde, el arranque sigue */ }
       history.replaceState(null, '', location.pathname);
     }
     const activo = torneoActivoId();
