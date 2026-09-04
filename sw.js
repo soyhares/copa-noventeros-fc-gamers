@@ -6,7 +6,7 @@
 //
 // Al cambiar archivos, sube VERSION: al activarse borra las cachés anteriores, así
 // nadie se queda con una versión vieja pegada.
-const VERSION = 'noventeros-v10';
+const VERSION = 'noventeros-v11';
 
 const ARCHIVOS = [
   './', './index.html', './style.css', './app.js', './firebase-config.js',
