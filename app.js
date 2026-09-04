@@ -922,6 +922,12 @@ function renderRegister(){
     const mensaje = '¡Inscripción confirmada! Nos vemos en la cancha.'
       + (resultado.codigoNuevo ? ` Guardá este código por si usás este alias desde otro dispositivo: ${resultado.codigoNuevo} (no es una contraseña, solo evita que otro jugador use tu alias por error).` : '');
     await mostrarAviso(mensaje, {titulo:'Listo', icono:'check_circle'});
+    // Al tocar "Aceptar" en el modal de arriba: si hubo código nuevo, copiarlo directo
+    // al portapapeles. Best-effort — si el navegador no tiene Clipboard API o niega el
+    // permiso, no pasa nada, el código ya quedó escrito en el propio mensaje.
+    if(resultado.codigoNuevo && navigator.clipboard){
+      try{ await navigator.clipboard.writeText(resultado.codigoNuevo); }catch(e){}
+    }
     pedirPermisoNotificaciones();
     render();
   });
