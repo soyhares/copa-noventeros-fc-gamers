@@ -29,17 +29,18 @@ la sesión activa en vez de un rol cacheado por dispositivo, status bar y scroll
 PWA instalada, y campos de fecha precargados con hoy en el formulario de creación.
 
 ### B · Sorteo visible para todos
-**Estado:** brainstorm · **Depende de:** A · **Spec:** —
+**Estado:** spec · **Depende de:** A · **Spec:** [design](docs/superpowers/specs/2026-09-04-B-sorteo-visible-design.md)
 
 Sorteo **reproducido**, no en vivo: el resultado ya está en Firestore y el jugador lo ve
 animado cuando entra. Se parten `runDrawTeams`/`runDrawAssign`/`runDrawGroups` en
 `sortearX()` (decide) + `animarX(resultado)` (pinta); el admin usa ambas, el jugador solo
-la segunda. Modal la primera vez, las tres animaciones en secuencia continua, y botón
-permanente para repetir. Incluye bajar la velocidad de grupos (hoy 220ms y en Liga se
-acelera hasta 40ms por jugador — ilegible).
+la segunda. Drawer fijo abajo que avisa de cada etapa nueva y lleva a una subpestaña
+`Sorteo` propia; las animaciones en secuencia continua y botón permanente para repetir.
+El resultado se deriva del documento: cero campos nuevos en Firestore. Incluye bajar la
+velocidad de grupos (hoy 220ms y en Liga se acelera hasta 40ms por jugador — ilegible).
 
-**Verificación:** `grep -n 'runDrawGroups\|runDrawTeams' app.js` — si solo se llaman desde
-`renderAdminSorteos`, B no está hecho.
+**Verificación:** `grep -n 'reproducirSorteo' app.js` debe mostrarla llamada desde la pestaña
+del jugador, no solo desde admin. Más `node tools/check-sorteo.mjs`.
 
 ### C · Alias protegido
 **Estado:** brainstorm · **Depende de:** A · **Spec:** —
