@@ -829,6 +829,7 @@ function renderLlave(holder,t){
 async function reproducirSorteo(holder, t, desde = 0){
   const etapas = etapasSorteadas(t).slice(desde);
   if(!etapas.length) return;
+  const vistaAlEmpezar = VIEW, subvistaAlEmpezar = SUBVIEW_TOURN, torneoAlEmpezar = t.id;
   await conAnimacion(async () => {
     for(const etapa of etapas){
       if(etapa === 'equipos')    await animarEquipos(holder, poolDe(t), t.drawnTeams);
@@ -836,8 +837,12 @@ async function reproducirSorteo(holder, t, desde = 0){
       if(etapa === 'grupos')     await animarGrupos(holder, t, t.groups);
     }
   });
-  // El listener no repintó mientras corría la animación: hay que ponerse al día.
-  render();
+  // El listener no repintó mientras corría la animación: hay que ponerse al día — pero
+  // solo si el usuario sigue donde estaba. Si navegó, cambió de torneo o está escribiendo
+  // en otra vista mientras tanto, repintar acá pisaría lo que tiene en pantalla ahora.
+  const sigueAca = VIEW === vistaAlEmpezar && SUBVIEW_TOURN === subvistaAlEmpezar
+    && CURRENT && CURRENT.id === torneoAlEmpezar;
+  if(sigueAca && !isTypingNow()) render();
 }
 
 // Información en reposo: plata y sin glow (MARCA.md §07).
