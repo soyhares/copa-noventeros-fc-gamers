@@ -276,6 +276,54 @@ function goleoTable(t){
   return Object.entries(totals).map(([id,goals])=>({id,goals})).sort((a,b)=>b.goals-a.goals);
 }
 
+/* ---- sorteo: derivación del resultado guardado ---- */
+// El sorteo se reproduce desde lo que ya está en el torneo — no hay campos extra en
+// Firestore. Estas cuatro traducen "lo guardado" a "lo que hay que animar".
+
+// Los equipos propuestos: club y país de cada inscrito. Es lo que gira en la ruleta
+// antes de que cada casillero aterrice en el equipo que salió sorteado.
+function poolDe(t){
+  const pool = [];
+  ((t && t.players) || []).forEach(p => {
+    pool.push({label:p.club, type:'club'});
+    pool.push({label:p.country, type:'country'});
+  });
+  return pool;
+}
+
+function asignacionDe(t){
+  const a = {};
+  ((t && t.players) || []).forEach(p => { if(p.assignedTeam) a[p.id] = p.assignedTeam; });
+  return a;
+}
+
+// El admin corre las tres etapas en orden y en momentos distintos, así que esto siempre
+// devuelve un prefijo: nunca 'grupos' sin 'equipos'.
+function etapasSorteadas(t){
+  if(!t) return [];
+  const e = [];
+  if(t.drawnTeams && t.drawnTeams.length) e.push('equipos');
+  if(t.players && t.players.length && t.players.every(p => p.assignedTeam)) e.push('asignacion');
+  if(t.groups) e.push('grupos');
+  return e;
+}
+
+// runDrawGroups reparte al jugador i en letters[i % nLetras], así que groups[L][k] salió
+// en el paso k*nLetras + índice(L). Recorrer k por fuera y las letras por dentro devuelve
+// esa misma secuencia, que es lo que hace que la reproducción se vea igual al sorteo.
+// Las letras se ordenan: Firestore no garantiza el orden de las claves de un mapa.
+function ordenGrupos(groups){
+  const letras = Object.keys(groups || {}).sort();
+  const salida = [];
+  const largo = Math.max(0, ...letras.map(L => groups[L].length));
+  for(let k = 0; k < largo; k++){
+    for(const L of letras){
+      if(k < groups[L].length) salida.push({grupo:L, id:groups[L][k]});
+    }
+  }
+  return salida;
+}
+
 /* ---- bracket ---- */
 function buildBracketFromGroups(t){
   const letters = Object.keys(t.groups);
