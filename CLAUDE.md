@@ -16,7 +16,9 @@ There is no test suite. The exceptions are `node tools/check-liga.mjs` and
 
 ## Files
 
-- `index.html` — shell only: topbar, empty `<main id="main">`, bottom tabbar (home / register / tournament / admin).
+- `index.html` — shell only: topbar, empty `<main id="main">`, bottom tabbar (home /
+  register / tournament / "Mis torneos"). Admin is reached from "Mis torneos", not its
+  own tab.
 - `app.js` — everything: Firestore access, tournament model, draws, standings, bracket, CSV, all rendering.
 - `style.css` — dark + neon-green theme, CSS vars in `:root`.
 - `firebase-config.js` — the user's own Firebase keys. The apiKey is **not** a secret and is meant to be committed.
@@ -30,8 +32,16 @@ There is no test suite. The exceptions are `node tools/check-liga.mjs` and
 
 Two Firestore documents drive the whole app:
 
-- `meta/config` → `INDEX`: `{ tournaments:[…summaries], activeId, adminPin, validTeams:{clubs,countries} }`
-- `tournaments/{id}` → `CURRENT`: the full active tournament (see `blankTournament()`)
+- `meta/config` → `INDEX`: `{ validTeams:{clubs,countries} }` — the only thing that's global
+- `tournaments/{id}` → `CURRENT`: the full tournament document (see `blankTournament()`),
+  carrying `ownerUid` (the organizer's Google account) and `joinCode` (the code that gets
+  shared)
+
+The organizer authenticates with Firebase Auth (Google); the player never authenticates —
+they paste the `joinCode` and the tournament lands in `localStorage`
+(`noventeros.misTorneos` and `noventeros.torneoActivo`). The account exists so a
+tournament doesn't lose its organizer if a device is lost, **not** for security: Firestore
+rules stay wide open, since a player registers by writing the tournament's whole document.
 
 Plus `meta/history` for archived tournaments.
 
@@ -120,7 +130,8 @@ rejects duplicates (`aliasTaken` / `clubTaken` / `countryTaken`).
 
 - Spanish for anything user-facing (UI strings, README). Code identifiers are English.
 - Keep it dependency-free. Firebase is loaded from the gstatic CDN as an ES module; that's the only dependency.
-- The admin PIN is deliberately weak — it's a speed bump between friends, not auth. Don't rebuild it as real security unless asked.
+- The organizer signs in with Google; the player has no account. That isn't security —
+  Firestore rules stay wide open. Don't rebuild it as real auth unless asked.
 - Firestore rules are intentionally wide open (see README). Same reasoning.
 
 ## Roadmap

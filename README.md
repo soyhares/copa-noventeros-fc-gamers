@@ -2,8 +2,10 @@
 
 Web para organizar torneos online de FC26 entre amigos: inscripción con validación,
 sorteos animados de equipos/asignación/grupos, tabla de posiciones, goleo, llave de
-playoffs, exportación a CSV y panel de administrador con PIN. Todo en tiempo real,
-sin necesidad de cuenta de Claude — cualquiera con el link puede entrar.
+playoffs, exportación a CSV y panel de administrador. Cada organizador entra con su
+cuenta de Google y puede llevar varios torneos a la vez; los jugadores no necesitan
+cuenta — se unen pegando el código del torneo. Todo en tiempo real, sin necesidad de
+cuenta de Claude.
 
 No requiere backend propio: usa **Firebase Firestore** (base de datos gratuita de
 Google) para guardar los datos en tiempo real, y se hospeda gratis en **GitHub Pages**.
@@ -50,9 +52,21 @@ service cloud.firestore {
 }
 ```
 
-Esto mantiene el mismo nivel de "confianza entre amigos" que ya tenías con el PIN de
-administrador (cualquiera con el link puede leer/escribir, igual que antes) — es apropiado
-para un torneo casual, no para datos sensibles.
+Esto mantiene la misma "confianza entre amigos" de siempre (cualquiera con el link puede
+leer/escribir) — es apropiado para un torneo casual, no para datos sensibles. La cuenta de
+Google del organizador (paso siguiente) no cambia esto: sirve para saber quién es dueño de
+cada torneo, no como seguridad.
+
+### Habilitar el inicio de sesión con Google
+
+Los organizadores entran con su cuenta de Google; los jugadores nunca se autentican. Para
+que el botón "Entrar con Google" funcione hacen falta dos pasos manuales en la consola de
+Firebase (esto no lo puede hacer el código):
+
+1. **Authentication → Sign-in method** → habilita el proveedor **Google**.
+2. **Authentication → Settings → Authorized domains** → agrega el dominio donde vas a
+   publicar la web (el de GitHub Pages del paso 3, ej. `soyhares.github.io`). Sin esto el
+   login falla con un error de dominio no autorizado.
 
 ## 2. Subir el proyecto a GitHub
 
@@ -82,19 +96,26 @@ necesidad de cuenta de Claude ni de nada especial.
 
 ## 4. Primer uso
 
-1. Abre el link → pestaña **Admin** → crea tu PIN de administrador.
-2. **Admin → Torneos** → crea tu torneo (nombre, modalidad, fechas) → queda activo.
+1. Abre el link → pestaña **Mis torneos** → **Entrar con Google**.
+2. **Crear torneo** (nombre, modalidad, fechas) → queda activo y te muestra su
+   **código de invitación** (ej. `NOV-4K2P`) para compartir.
    - **Copa**: formato 8/16/32 → grupos de 4 → llave de playoffs. Si se inscriben menos
      de los previstos, el formato baja solo y los que sobran quedan como suplentes.
    - **Liga**: todos contra todos, solo ida o ida y vuelta. Sin límite de jugadores
      (o con un cupo máximo, si lo pones). Mínimo 3 inscritos. El empate es un
      resultado válido y gana quien termine primero en la tabla.
-3. Comparte el link. Tus amigos entran directo a **Inscribirme**.
-4. Cuando tengas suficientes inscritos: **Admin → Panel** → cerrar inscripciones →
-   **Admin → Sorteos** → equipos → asignación → grupos (Copa) o calendario (Liga).
+3. Comparte el link con el código, o el link con el código ya incluido
+   (`?j=NOV-4K2P`). Tus amigos no necesitan cuenta: pegan el código en **Mis torneos**
+   → **Unirme al torneo** y quedan directo en **Inscribirme**.
+4. Cuando tengas suficientes inscritos: entra a tu torneo → **Panel** → cerrar
+   inscripciones → **Sorteos** → equipos → asignación → grupos (Copa) o calendario (Liga).
 5. Carga marcadores desde la pestaña **Torneo**. Al completarse todos los partidos,
-   **Admin → Sorteos** ofrece generar la llave (Copa) o coronar al campeón (Liga).
-6. Exporta el CSV cuando quieras desde **Admin → Panel** o **Admin → Torneos**.
+   **Sorteos** ofrece generar la llave (Copa) o coronar al campeón (Liga).
+6. Exporta el CSV cuando quieras desde el **Panel** de tu torneo.
+
+Un mismo organizador puede llevar varios torneos a la vez: todos aparecen en
+**Mis torneos**, marcados como "ORGANIZAS". Los torneos a los que solo te uniste como
+jugador aparecen ahí también, marcados como "JUEGAS".
 
 ## Cómo se publica la web
 
@@ -183,12 +204,13 @@ Los iconos **no se editan a mano**: se cambia el arte en `assets/brand/` y se co
 
 ## Notas honestas
 
-- El "PIN" de administrador es una protección simple (no es seguridad real tipo login).
-  Suficiente para un torneo entre amigos, no para datos sensibles.
+- La cuenta de Google del organizador identifica quién es dueño de cada torneo; no es
+  seguridad real tipo login para los datos. Suficiente para un torneo entre amigos, no
+  para datos sensibles.
 - Las reglas de Firestore de arriba son abiertas (cualquiera con el link técnico de tu
-  base de datos podría leer/escribir directo si buscara la URL de la API). Para un
-  torneo casual esto es aceptable; si más adelante quieres cerrarlo más, se puede
-  agregar autenticación de Firebase (Google/email) — avísame si llegas a ese punto.
+  base de datos podría leer/escribir directo si buscara la URL de la API, y de hecho un
+  jugador se inscribe escribiendo el documento entero del torneo). Para un torneo casual
+  esto es aceptable.
 - La lista de clubes/países válidos para FC26 es editable desde **Admin → Lista válida**
   por si algún nombre no calza exacto con el roster real del juego.
 # copa-noventeros-fc-gamers

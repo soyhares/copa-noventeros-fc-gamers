@@ -35,7 +35,7 @@ const DEFAULT_TEAMS = {
 };
 
 /* ================= STATE ================= */
-let INDEX = null;       // { tournaments:[{id,name,size,createdAt,status}], activeId, adminPin, validTeams:{clubs,countries} }
+let INDEX = null;       // { validTeams:{clubs,countries} } — listas de FC26, lo único compartido
 let CURRENT = null;     // full active tournament object
 let USER = null;   // sesión de Google del organizador, o null
 let VIEW = 'home';
@@ -86,12 +86,16 @@ function setTorneoActivoId(id){
 async function loadIndex(){
   let idx = await fGet('meta','config');
   if(!idx){
-    idx = { tournaments:[], activeId:null, adminPin:null, validTeams: DEFAULT_TEAMS };
+    idx = { validTeams: DEFAULT_TEAMS };
     await fSet('meta','config', idx);
   }
+  // meta/config fue un índice global (tournaments[], activeId, adminPin). Ya no: cada
+  // torneo se descubre por su joinCode y su dueño por ownerUid. Si el documento todavía
+  // trae los campos viejos, se descartan en la primera escritura.
   if(!idx.validTeams) idx.validTeams = DEFAULT_TEAMS;
-  INDEX = idx;
-  return idx;
+  INDEX = { validTeams: idx.validTeams };
+  if(idx.tournaments || idx.activeId || idx.adminPin) await saveIndex();
+  return INDEX;
 }
 async function saveIndex(){ await fSet('meta','config', INDEX); }
 

@@ -11,15 +11,15 @@ Estados: `idea` → `brainstorm` → `spec` → `plan` → `en curso` → `hecho
 Orden: **A → B → C → D**. B, C y D son casi independientes entre sí una vez que A está de pie.
 
 ### A · Multi-torneo con código de invitación
-**Estado:** plan · **Depende de:** — · **Spec:** [design](docs/superpowers/specs/2026-09-03-A-multi-torneo-invitacion-design.md) · **Plan:** [6 tareas](docs/superpowers/plans/2026-09-03-A-multi-torneo-invitacion.md)
+**Estado:** hecho · **Depende de:** — · **Spec:** [design](docs/superpowers/specs/2026-09-03-A-multi-torneo-invitacion-design.md) · **Plan:** [6 tareas](docs/superpowers/plans/2026-09-03-A-multi-torneo-invitacion.md)
 
 Cuenta Google **solo para el organizador** (`ownerUid`); el jugador entra con `joinCode`
 sin cuenta y queda en `localStorage`. Vista nueva "Mis torneos" con los activos a los que
 pertenezco. `meta/config` se reduce a `validTeams`. Reglas de Firestore siguen abiertas:
 la cuenta evita que un torneo quede huérfano, no es seguridad.
 
-**Verificación:** `grep -c 'adminPin' app.js` — mientras siga habiendo un PIN global
-único en `INDEX`, A no está hecho.
+**Verificación:** `grep -c 'joinCode' app.js` — debe ser > 0; y
+`grep -c 'adminPin' app.js` debe ser 0.
 
 ### B · Sorteo visible para todos
 **Estado:** brainstorm · **Depende de:** A · **Spec:** —
