@@ -891,6 +891,13 @@ function renderRegister(){
     // después. El modal vive fuera de #main y espera a que el jugador lo cierre.
     const mensaje = '¡Inscripción confirmada! Nos vemos en la cancha.'
       + (resultado.codigoNuevo ? ` Guardá este código por si usás este alias desde otro dispositivo: ${resultado.codigoNuevo} (no es una contraseña, solo evita que otro jugador use tu alias por error).` : '');
+    // Mismo gesto de click que confirma la inscripción: si el navegador no soporta
+    // Notification, o el usuario ya decidió antes (granted/denied), no hay nada que
+    // pedir. Sin permiso, la capa de segundo plano de las notificaciones simplemente
+    // no dispara nada.
+    if(typeof Notification !== 'undefined' && Notification.permission === 'default'){
+      Notification.requestPermission();
+    }
     await mostrarAviso(mensaje, {titulo:'Listo', icono:'check_circle'});
     render();
   });
