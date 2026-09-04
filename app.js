@@ -2003,6 +2003,7 @@ function withTimeout(p, ms){
 }
 
 function showBootError(titulo, detalle){
+  document.getElementById('app').classList.add('listo');
   const pill = document.getElementById('status-pill');
   pill.textContent = 'Sin conexión'; pill.className = 'pill';
   $main.innerHTML = `<div class="empty">
@@ -2064,6 +2065,9 @@ async function boot(){
     listenersListos = true;
   }
   render();
+  // Recién acá hay contenido real pintado y enganchado en #main: revelar el shell
+  // con el fade de style.css en vez de mostrar el hueco en blanco de antes.
+  document.getElementById('app').classList.add('listo');
   attachTournamentListener(torneoActivoId());
 }
 boot();

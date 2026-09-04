@@ -79,7 +79,14 @@
     }
   }
   h1,h2,h3,.display{font-family:var(--font-display);font-weight:600;text-transform:uppercase;letter-spacing:.06em;}
-  #app{max-width:480px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;position:relative;}
+  /* Arranca invisible: boot() tarda un rato en traer la primera lectura de Firestore,
+     y hasta que no corre render() no hay nada pintado ni enganchado en #main — sin esto
+     se ve (y se siente) como que la app quedó trabada. Con la clase "listo" ya aparece
+     con contenido real y los toques funcionando, en vez del hueco en blanco. */
+  #app{max-width:480px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;position:relative;
+    opacity:0;transition:opacity .4s ease;
+  }
+  #app.listo{opacity:1;}
   /* 90px de aire fijo alcanzaba en dispositivos sin home indicator, pero .tabbar suma
      env(safe-area-inset-bottom) a su propia altura y este padding no lo sumaba: en un
      iPhone con esa franja, el último botón quedaba tapado. */
