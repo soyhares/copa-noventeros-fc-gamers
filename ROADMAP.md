@@ -55,17 +55,20 @@ nombrarlo en la UI.
 está hecho. (No sirve buscar `localStorage` a secas: A ya lo usa para `misTorneos`.)
 
 ### D · Notificaciones sin infraestructura
-**Estado:** brainstorm · **Depende de:** A · **Spec:** —
+**Estado:** hecho · **Depende de:** A · **Spec:** [design](docs/superpowers/specs/2026-09-04-D-notificaciones-design.md) · **Plan:** [6 tareas](docs/superpowers/plans/2026-09-04-D-notificaciones.md)
 
-Tres capas, todas gratis, todas sobre el `onSnapshot` que ya existe:
-1. Mirando la app → **toast**.
-2. App en segundo plano → **`showNotification()`**, sin FCM. En iOS funciona mucho peor:
-   el navegador suspende el JS rápido.
-3. Volviendo después → **"novedades desde tu última visita"**, comparando contra
-   `localStorage.ultimaVista`.
+Un único motor de diff (`diffTorneo`/`resumenTorneo`) compara la snapshot actual del
+torneo contra la última que el dispositivo vio (`localStorage`) y alimenta tres capas
+sobre el `onSnapshot` que ya existe: toast si la app está visible, `showNotification()`
+si está en segundo plano y hay permiso (pedido en el mismo click de inscripción, sin
+FCM — límite conocido en iOS), y el mismo diff contra localStorage cuando recién se abre.
+Cubre marcadores y avances de fase para todos los inscritos por igual, organizador
+incluido si se registró como jugador, hasta que hay campeón. También avisa si el
+organizador borra el torneo antes de ese punto, y saca esa entrada de "Mis torneos" en
+el dispositivo que recibe el aviso.
 
-**Verificación:** `grep -n 'showNotification' app.js` — vacío significa que la capa 2 no
-está hecha.
+**Verificación:** `grep -n 'showNotification' app.js` debe tener resultado (la capa de
+segundo plano). Más `node tools/check-novedades.mjs` para el motor de diff.
 
 ### E · Push con la app cerrada — **no se hace**
 **Estado:** descartado (reevaluar tras un torneo real con D)
