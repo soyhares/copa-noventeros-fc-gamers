@@ -96,7 +96,7 @@ necesidad de cuenta de Claude ni de nada especial.
 
 ## 4. Primer uso
 
-1. Abre el link → pestaña **Mis torneos** → **Entrar con Google**.
+1. Abre el link → pestaña **Mis torneos** → **Crear u organizar un torneo** → en la vista de Administración, **Entrar con Google**.
 2. **Crear torneo** (nombre, modalidad, fechas) → queda activo y te muestra su
    **código de invitación** (ej. `NOV-4K2P`) para compartir.
    - **Copa**: formato 8/16/32 → grupos de 4 → llave de playoffs. Si se inscriben menos
@@ -105,7 +105,7 @@ necesidad de cuenta de Claude ni de nada especial.
      (o con un cupo máximo, si lo pones). Mínimo 3 inscritos. El empate es un
      resultado válido y gana quien termine primero en la tabla.
 3. Comparte el link con el código, o el link con el código ya incluido
-   (`?j=NOV-4K2P`). Tus amigos no necesitan cuenta: pegan el código en **Mis torneos**
+   (`?j=NOV-4K2P`). Tus amigos no necesitan cuenta: en **Inicio** pegan el código en la sección **¿Te invitaron?**
    → **Unirme al torneo** y quedan directo en **Inscribirme**.
 4. Cuando tengas suficientes inscritos: entra a tu torneo → **Panel** → cerrar
    inscripciones → **Sorteos** → equipos → asignación → grupos (Copa) o calendario (Liga).
@@ -211,6 +211,6 @@ Los iconos **no se editan a mano**: se cambia el arte en `assets/brand/` y se co
   base de datos podría leer/escribir directo si buscara la URL de la API, y de hecho un
   jugador se inscribe escribiendo el documento entero del torneo). Para un torneo casual
   esto es aceptable.
-- La lista de clubes/países válidos para FC26 es editable desde **Admin → Lista válida**
+- La lista de clubes/países válidos para FC26 es editable desde **Mis torneos → Crear u organizar un torneo → Lista válida**
   por si algún nombre no calza exacto con el roster real del juego.
 # copa-noventeros-fc-gamers
