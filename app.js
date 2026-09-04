@@ -835,6 +835,9 @@ async function reproducirSorteo(holder, t, desde = 0){
       if(etapa === 'equipos')    await animarEquipos(holder, poolDe(t), t.drawnTeams);
       if(etapa === 'asignacion') await animarAsignacion(holder, t, asignacionDe(t));
       if(etapa === 'grupos')     await animarGrupos(holder, t, t.groups);
+      // Deja el resultado recién aterrizado en pantalla un momento antes de tapar la
+      // etapa con la siguiente animación (o con el resumen final).
+      await new Promise(r => setTimeout(r, 1200));
     }
   });
   // El listener no repintó mientras corría la animación: hay que ponerse al día — pero
@@ -845,19 +848,41 @@ async function reproducirSorteo(holder, t, desde = 0){
   if(sigueAca && !isTypingNow()) render();
 }
 
-// Información en reposo: plata y sin glow (MARCA.md §07).
+// El resultado escrito de cada etapa ya sorteada — lo que queda en pantalla cuando no
+// hay animación corriendo (y adonde vuelve la vista cuando termina una). Sin botón para
+// repetir: no es una acción que el jugador pueda disparar, es información en reposo
+// (MARCA.md §07), plata y sin glow.
+function resumenSorteo(t){
+  const etapas = etapasSorteadas(t);
+  let html = '';
+  if(etapas.includes('equipos')){
+    html += `<div class="sorteo-etapa"><div class="n4">Equipos sorteados</div>
+      <p class="small">${esc(t.drawnTeams.join(' · '))}</p></div>`;
+  }
+  if(etapas.includes('asignacion')){
+    const asignacion = asignacionDe(t);
+    html += `<div class="sorteo-etapa"><div class="n4">Asignación</div>`
+      + t.players.map(p => `<div class="list-item"><span class="name">${esc(p.alias)}</span><span class="sub">${esc(asignacion[p.id])}</span></div>`).join('')
+      + `</div>`;
+  }
+  if(etapas.includes('grupos')){
+    const liga = esLiga(t);
+    html += `<div class="sorteo-etapa"><div class="n4">${liga?'Calendario':'Grupos'}</div>`
+      + Object.keys(t.groups).sort().map(L => `<p class="small"><b>${liga?'Liga':'Grupo '+L}</b>: ${esc(t.groups[L].map(id => playerName(t, id)).join(' · '))}</p>`).join('')
+      + `</div>`;
+  }
+  return html;
+}
+
 function renderSorteo(holder, t){
   const total = etapasSorteadas(t).length;
   const desde = AUTOPLAY_DESDE;
   AUTOPLAY_DESDE = null;
-  const nombres = {equipos:'Equipos', asignacion:'Asignación', grupos: esLiga(t)?'Calendario':'Grupos'};
   holder.innerHTML = `<div class="card tight">
     <b>Sorteo</b>
     <p class="small muted">${total === 3 ? 'El sorteo está completo.' : `Van ${total} de 3 etapas.`}</p>
-    <p class="small">${etapasSorteadas(t).map(e => esc(nombres[e])).join(' · ')}</p>
-    <button class="btn secondary" id="ver-sorteo">Repetir sorteo</button>
+    ${resumenSorteo(t)}
   </div>`;
-  holder.querySelector('#ver-sorteo').onclick = () => reproducirSorteo(holder, t, 0);
   if(desde !== null) reproducirSorteo(holder, t, desde);
 }
 

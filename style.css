@@ -42,6 +42,8 @@
   .n2{font-family:var(--font-display);font-weight:600;text-transform:uppercase;letter-spacing:.06em;}
   .n3{font-family:var(--font-ui);font-weight:500;letter-spacing:.02em;}
   .n4{font-family:var(--font-ui);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.14em;}
+  .sorteo-etapa{margin-top:14px;}
+  .sorteo-etapa .n4{color:var(--silver);}
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   /* Sin esto, el rebote elástico de iOS al llegar al tope del scroll deja ver un
      instante lo que hay detrás del documento (el fondo con el logo) justo sobre el
@@ -78,10 +80,13 @@
   }
   h1,h2,h3,.display{font-family:var(--font-display);font-weight:600;text-transform:uppercase;letter-spacing:.06em;}
   #app{max-width:480px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;position:relative;}
-  #main{flex:1;padding:16px 16px 90px;}
+  /* 90px de aire fijo alcanzaba en dispositivos sin home indicator, pero .tabbar suma
+     env(safe-area-inset-bottom) a su propia altura y este padding no lo sumaba: en un
+     iPhone con esa franja, el último botón quedaba tapado. */
+  #main{flex:1;padding:16px 16px calc(90px + env(safe-area-inset-bottom));}
 
   .topbar{
-    padding:calc(14px + env(safe-area-inset-top)) 16px 15px;display:flex;align-items:center;justify-content:space-between;
+    padding:calc(14px + env(safe-area-inset-top)) 16px 15px;display:flex;align-items:center;justify-content:space-between;gap:14px;
     border-bottom:1px solid var(--line);position:sticky;top:0;
     background:linear-gradient(180deg, rgba(10,13,11,.94), rgba(7,9,7,.86));
     backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);z-index:20;
@@ -100,6 +105,10 @@
   .brand .ver{font-family:var(--font-ui);font-size:10px;color:var(--muted-dark);font-weight:600;letter-spacing:.5px;vertical-align:middle;margin-left:2px;}
   .brand > span{color:var(--silver);}
   .pill{font-family:var(--font-ui);font-weight:600;text-transform:uppercase;letter-spacing:.14em;font-size:10px;padding:4px 10px;border:1px solid var(--line);border-radius:20px;color:var(--muted);background:var(--panel-dark);}
+  /* En la topbar el flex por defecto encoge la pill por debajo de su ancho de una
+     línea antes de quitarle espacio al título, así que el texto largo ("Inscripciones
+     abiertas") se partía en dos líneas y se comía el hueco con el logo. */
+  #status-pill{white-space:nowrap;flex-shrink:0;}
   .pill.live{color:var(--accent);border-color:var(--lineBright);background:var(--accent-subtle);box-shadow:0 0 12px var(--accent-glow);}
 
   .tabbar{
