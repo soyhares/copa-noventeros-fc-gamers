@@ -43,7 +43,7 @@ velocidad de grupos (hoy 220ms y en Liga se acelera hasta 40ms por jugador — i
 del jugador, no solo desde admin. Más `node tools/check-sorteo.mjs`.
 
 ### C · Alias protegido
-**Estado:** brainstorm · **Depende de:** A · **Spec:** —
+**Estado:** spec · **Depende de:** A · **Spec:** [design](docs/superpowers/specs/2026-09-04-C-alias-protegido-design.md)
 
 Registro global `meta/aliases/{alias}` con código de protección. Mismo dispositivo: sale
 de `localStorage`, invisible. Otro dispositivo: pide el código. Da sentido al salón de la
