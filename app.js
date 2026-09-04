@@ -41,6 +41,13 @@ let USER = null;   // sesión de Google del organizador, o null
 let VIEW = 'home';
 let SUBVIEW_ADMIN = 'panel';
 let SUBVIEW_TOURN = 'grupos';
+// Mientras una animación de sorteo corre, onSnapshot no debe repintar y borrarla.
+// Antes no hacía falta: solo animaba el admin, que era justo quien escribía.
+let ANIMANDO = false;
+async function conAnimacion(fn){
+  ANIMANDO = true;
+  try { await fn(); } finally { ANIMANDO = false; }
+}
 let unsubTournament = null;
 let prevUid = null;     // para detectar cambios de sesión en onAuthStateChanged
 let listenersListos = false;  // guarda que onAuthStateChanged y attachIndexListener se registren una sola vez
@@ -96,6 +103,9 @@ function torneoActivoId(){
 function setTorneoActivoId(id){
   try{ id ? localStorage.setItem(LS_ACTIVO, id) : localStorage.removeItem(LS_ACTIVO); }catch(e){}
 }
+
+const LS_SORTEO = 'noventeros.sorteoVisto';
+function marcarSorteoVisto(t){ /* Tarea 4 */ }
 
 async function loadIndex(){
   let idx = await fGet('meta','config');
@@ -962,92 +972,141 @@ function renderAdminSorteos(holder){
   holder.innerHTML = `<div class="empty"><span class="material-symbols-outlined">check_circle</span> Sorteos completos. Carga los marcadores desde la pestaña <b>Torneo</b>.</div>`;
 }
 
-async function runDrawTeams(t, pool, holder){
-  holder.innerHTML = `<div class="card"><b>Sorteando equipos…</b><div id="slots" style="margin-top:12px;"></div></div>`;
-  const slotsEl = document.getElementById('slots');
-  const chosen = shuffle(pool).slice(0, t.size);
-  for(let i=0;i<chosen.length;i++){
-    const div = document.createElement('div');
-    div.className='draw-slot rolling';
-    div.textContent='???';
-    slotsEl.appendChild(div);
-    let ticks=0;
-    await new Promise(res=>{
-      const iv = setInterval(()=>{
-        div.textContent = shuffle(pool)[0].label;
-        ticks++;
-        if(ticks>8){ clearInterval(iv); div.textContent=chosen[i].label; div.className='draw-slot landed'; res(); }
-      },70);
-    });
-  }
-  const fresh = await loadTournament(t.id);
-  fresh.drawnTeams = chosen.map(c=>c.label);
-  fresh.status='drawn';
-  await saveTournament(fresh);
-  CURRENT = fresh;
-  setTimeout(()=>renderAdmin(), 500);
+/* ---- sorteo: decidir ---- */
+// Puras: deciden el resultado y no tocan Firestore ni el DOM.
+
+function sortearEquipos(t, pool){
+  return shuffle(pool).slice(0, t.size).map(c => c.label);
 }
 
-async function runDrawAssign(t, holder){
-  holder.innerHTML = `<div class="card"><b>Asignando equipos…</b><div id="flips" style="margin-top:12px;"></div></div>`;
-  const flipsEl = document.getElementById('flips');
+function sortearAsignacion(t){
   const teams = shuffle(t.drawnTeams);
-  const players = t.players;
-  const assignment = {};
-  players.forEach((p,i)=> assignment[p.id]=teams[i]);
-  for(const p of players){
-    const card = document.createElement('div');
-    card.className='flip-card';
-    card.innerHTML = `<div class="alias">${esc(p.alias)}</div><div class="team">${esc(assignment[p.id])}</div>`;
-    flipsEl.appendChild(card);
-    await new Promise(r=>setTimeout(r,120));
-    card.classList.add('revealed');
-    await new Promise(r=>setTimeout(r,280));
-  }
-  const fresh = await loadTournament(t.id);
-  fresh.players.forEach(p=> p.assignedTeam = assignment[p.id]);
-  await saveTournament(fresh);
-  CURRENT = fresh;
-  setTimeout(()=>renderAdmin(), 500);
+  const asignacion = {};
+  t.players.forEach((p, i) => asignacion[p.id] = teams[i]);
+  return asignacion;
 }
 
-async function runDrawGroups(t, holder){
+function sortearGrupos(t){
   // La liga es un grupo único 'L' con todos los jugadores; el sorteo solo define el
   // orden de la tabla inicial y el del calendario.
   const liga = esLiga(t);
   const letters = liga ? 'L' : 'ABCDEFGH'.slice(0, t.size/4);
-  holder.innerHTML = `<div class="card"><b>${liga?'Generando calendario…':'Formando grupos…'}</b><div class="group-cols" id="gcols" style="flex-wrap:wrap;margin-top:12px;"></div></div>`;
-  const gcols = document.getElementById('gcols');
-  const colEls = {};
-  [...letters].forEach(L=>{
-    const col = document.createElement('div'); col.className='group-col'; col.style.minWidth='120px';
-    if(liga) col.style.flex = '1 1 100%';
-    col.innerHTML = `<h4>${liga?'Liga':'Grupo '+L}</h4><div class="slots" id="col-${L}"></div>`;
-    gcols.appendChild(col); colEls[L]=document.getElementById('col-'+L);
-  });
-  const shuffled = shuffle(t.players.map(p=>p.id));
-  const groups = {}; letters.split('').forEach(L=>groups[L]=[]);
-  for(let i=0;i<shuffled.length;i++){
-    const L = letters[i % letters.length];
-    groups[L].push(shuffled[i]);
-    const slot = document.createElement('div'); slot.className='slot'; slot.textContent = playerName(t, shuffled[i]);
-    colEls[L].appendChild(slot);
-    await new Promise(r=>setTimeout(r, liga? Math.max(40, 220-shuffled.length*8) : 220));
-    slot.classList.add('in');
-  }
-  const fresh = await loadTournament(t.id);
-  fresh.groups = groups;
+  const shuffled = shuffle(t.players.map(p => p.id));
+  const groups = {};
+  letters.split('').forEach(L => groups[L] = []);
+  shuffled.forEach((id, i) => groups[letters[i % letters.length]].push(id));
+
   const groupMatches = {};
   for(const key in groups){
     let pares = roundRobinPairs(groups[key]);
-    if(liga && t.vuelta) pares = [...pares, ...pares.map(([a,b])=>[b,a])];
-    groupMatches[key] = pares.map(([p1,p2],i)=>({id:key+'-'+i,p1,p2,s1:null,s2:null,played:false}));
+    if(liga && t.vuelta) pares = [...pares, ...pares.map(([a,b]) => [b,a])];
+    groupMatches[key] = pares.map(([p1,p2], i) => ({id:key+'-'+i, p1, p2, s1:null, s2:null, played:false}));
   }
-  fresh.groupMatches = groupMatches;
-  fresh.status='groups';
+  return { groups, groupMatches };
+}
+
+/* ---- sorteo: animar ---- */
+// Puras de pintura: reciben el resultado ya decidido y no tocan Firestore. El admin las
+// llama con lo que acaba de sortear; el jugador, con lo que derivó del documento.
+
+async function animarEquipos(holder, pool, elegidos){
+  holder.innerHTML = `<div class="card"><b>Sorteando equipos…</b><div id="slots" style="margin-top:12px;"></div></div>`;
+  const slotsEl = holder.querySelector('#slots');
+  for(let i = 0; i < elegidos.length; i++){
+    const div = document.createElement('div');
+    div.className = 'draw-slot rolling';
+    div.textContent = '???';
+    slotsEl.appendChild(div);
+    let ticks = 0;
+    await new Promise(res => {
+      const iv = setInterval(() => {
+        div.textContent = shuffle(pool)[0].label;
+        ticks++;
+        if(ticks > 8){ clearInterval(iv); div.textContent = elegidos[i]; div.className = 'draw-slot landed'; res(); }
+      }, 70);
+    });
+  }
+}
+
+async function animarAsignacion(holder, t, asignacion){
+  holder.innerHTML = `<div class="card"><b>Asignando equipos…</b><div id="flips" style="margin-top:12px;"></div></div>`;
+  const flipsEl = holder.querySelector('#flips');
+  for(const p of t.players){
+    const card = document.createElement('div');
+    card.className = 'flip-card';
+    card.innerHTML = `<div class="alias">${esc(p.alias)}</div><div class="team">${esc(asignacion[p.id])}</div>`;
+    flipsEl.appendChild(card);
+    await new Promise(r => setTimeout(r, 120));
+    card.classList.add('revealed');
+    await new Promise(r => setTimeout(r, 280));
+  }
+}
+
+async function animarGrupos(holder, t, groups){
+  const liga = esLiga(t);
+  const letras = Object.keys(groups).sort();
+  holder.innerHTML = `<div class="card"><b>${liga?'Generando calendario…':'Formando grupos…'}</b><div class="group-cols" id="gcols" style="flex-wrap:wrap;margin-top:12px;"></div></div>`;
+  const gcols = holder.querySelector('#gcols');
+  const colEls = {};
+  letras.forEach(L => {
+    const col = document.createElement('div');
+    col.className = 'group-col';
+    col.style.minWidth = '120px';
+    if(liga) col.style.flex = '1 1 100%';
+    col.innerHTML = `<h4>${liga?'Liga':'Grupo '+L}</h4><div class="slots"></div>`;
+    gcols.appendChild(col);
+    colEls[L] = col.querySelector('.slots');
+  });
+  for(const {grupo, id} of ordenGrupos(groups)){
+    const slot = document.createElement('div');
+    slot.className = 'slot';
+    slot.textContent = playerName(t, id);
+    colEls[grupo].appendChild(slot);
+    // 220ms fijo para los dos modos: el cálculo viejo bajaba hasta 40ms por jugador en
+    // ligas grandes y no se leía nada.
+    await new Promise(r => setTimeout(r, 220));
+    slot.classList.add('in');
+  }
+}
+
+/* ---- sorteo: los tres pasos del admin ---- */
+// Deciden, animan y guardan. Marcan el sorteo como visto para que el aviso no le salte
+// a quien lo acaba de mirar en vivo.
+
+async function runDrawTeams(t, pool, holder){
+  const elegidos = sortearEquipos(t, pool);
+  await conAnimacion(() => animarEquipos(holder, pool, elegidos));
+  const fresh = await loadTournament(t.id);
+  fresh.drawnTeams = elegidos;
+  fresh.status = 'drawn';
   await saveTournament(fresh);
   CURRENT = fresh;
-  setTimeout(()=>renderAdmin(), 600);
+  marcarSorteoVisto(fresh);
+  setTimeout(() => renderAdmin(), 500);
+}
+
+async function runDrawAssign(t, holder){
+  const asignacion = sortearAsignacion(t);
+  await conAnimacion(() => animarAsignacion(holder, t, asignacion));
+  const fresh = await loadTournament(t.id);
+  fresh.players.forEach(p => p.assignedTeam = asignacion[p.id]);
+  await saveTournament(fresh);
+  CURRENT = fresh;
+  marcarSorteoVisto(fresh);
+  setTimeout(() => renderAdmin(), 500);
+}
+
+async function runDrawGroups(t, holder){
+  const { groups, groupMatches } = sortearGrupos(t);
+  await conAnimacion(() => animarGrupos(holder, t, groups));
+  const fresh = await loadTournament(t.id);
+  fresh.groups = groups;
+  fresh.groupMatches = groupMatches;
+  fresh.status = 'groups';
+  await saveTournament(fresh);
+  CURRENT = fresh;
+  marcarSorteoVisto(fresh);
+  setTimeout(() => renderAdmin(), 600);
 }
 
 // El código es información en reposo, no un estado ni un momento: va en plata, sin
