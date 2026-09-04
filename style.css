@@ -47,6 +47,12 @@
      instante lo que hay detrás del documento (el fondo con el logo) justo sobre el
      topbar, encima del status bar del teléfono. */
   html,body{margin:0;padding:0;background:var(--bg);color:var(--white);font-family:var(--font-ui);overscroll-behavior-y:none;}
+  /* Instalada como PWA se espera que se vea como app nativa, sin la barra de scroll
+     del navegador; en pestaña normal se deja, ahí sí es una señal útil. */
+  @media (display-mode: standalone){
+    html{scrollbar-width:none;}
+    html::-webkit-scrollbar{display:none;}
+  }
   /* Dark matte first: el carbón sigue dominando (MARCA.md §07, 70% negro/grafito),
      pero la foto neón ahora se reconoce como elemento de fondo, no solo como sombra
      apenas perceptible; encima va un halo verde tenue y viñeta. */
@@ -75,7 +81,7 @@
   #main{flex:1;padding:16px 16px 90px;}
 
   .topbar{
-    padding:calc(14px + env(safe-area-inset-top)) 16px 10px;display:flex;align-items:center;justify-content:space-between;
+    padding:calc(14px + env(safe-area-inset-top)) 16px 15px;display:flex;align-items:center;justify-content:space-between;
     border-bottom:1px solid var(--line);position:sticky;top:0;
     background:linear-gradient(180deg, rgba(10,13,11,.94), rgba(7,9,7,.86));
     backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);z-index:20;
@@ -89,7 +95,7 @@
   }
   .brand-wrap{display:flex;align-items:center;gap:10px;}
   .brand-logo{width:34px;height:34px;object-fit:contain;flex-shrink:0;filter:drop-shadow(0 2px 6px var(--shadow-deep));}
-  .brand{display:flex;flex-direction:column;line-height:.85;}
+  .brand{display:flex;flex-direction:column;line-height:.85;gap:3px;}
   .brand b{font-size:16px;color:var(--white);}
   .brand .ver{font-family:var(--font-ui);font-size:10px;color:var(--muted-dark);font-weight:600;letter-spacing:.5px;vertical-align:middle;margin-left:2px;}
   .brand > span{color:var(--silver);}

@@ -6,6 +6,14 @@
 <title>Noventeros FC Gamers</title>
 <meta name="description" content="Torneos online de FC26 entre amigos: inscripción, sorteos, fase de grupos, playoffs y tabla de goleo.">
 
+<!-- Sin esto, iOS no tiene una regla clara para pintar el status bar en modo PWA
+     instalada y deja ver lo que hay detrás durante el scroll. black-translucent
+     vuelve esa franja transparente y la deja pintar por el topbar (que ya reserva
+     ese espacio con env(safe-area-inset-top)), en vez de un color nativo aparte. -->
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
 <!-- Iconos. Ojo con los dos nombres: el manifest instala la app como
      "FC Gamers90" (lo que se lee bajo el icono en la pantalla de inicio),
      mientras que NOVENTEROS FC GAMERS es el wordmark de la marca y es lo que se ve
@@ -41,7 +49,7 @@
   <div class="topbar">
     <div class="brand-wrap">
       <img class="brand-logo" src="assets/logo.png" alt="">
-      <div class="brand"><b class="n1">NOVENTEROS</b><span class="n4">FC GAMERS <span class="ver">v1.1.1</span></span></div>
+      <div class="brand"><b class="n1">NOVENTEROS</b><span class="n4">FC GAMERS <span class="ver">v1.1.2</span></span></div>
     </div>
     <div class="pill" id="status-pill">—</div>
   </div>
