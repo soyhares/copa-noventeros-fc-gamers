@@ -446,7 +446,7 @@ async function render(){
   const st = statusLabel(CURRENT);
   const pillEl = document.getElementById('status-pill');
   pillEl.textContent = st.text; pillEl.className = 'pill '+st.cls;
-  renderDrawerSorteo();
+  renderDrawer();
 
   if(VIEW==='home') return renderHome();
   if(VIEW==='register') return renderRegister();
@@ -933,6 +933,15 @@ function renderSorteo(holder, t){
   if(desde !== null) reproducirSorteo(holder, t, desde);
 }
 
+// Un pedido de código de alias (Tarea 5) tiene prioridad sobre el aviso ambiente de
+// sorteo: mientras el jugador resuelve una inscripción bloqueada, no tiene sentido
+// taparle el drawer con el aviso de otro torneo.
+let DRAWER_ALIAS = null;
+function renderDrawer(){
+  if(DRAWER_ALIAS) return renderDrawerAlias();
+  renderDrawerSorteo();
+}
+
 // Vive fuera de #main para sobrevivir el cambio de vista; render() lo repinta siempre.
 function renderDrawerSorteo(){
   const el = document.getElementById('drawer');
@@ -940,7 +949,7 @@ function renderDrawerSorteo(){
   if(!t || ANIMANDO || etapasNuevas(t) <= 0){ el.innerHTML = ''; return; }
   const visto = sorteoVisto()[t.id] || 0;
   const n = etapasNuevas(t);
-  el.innerHTML = `<div class="drawer-sorteo">
+  el.innerHTML = `<div class="drawer-card">
     <div class="ds-text">
       <b>${n === 1 ? 'Se sorteó una etapa nueva' : `Se sortearon ${n} etapas nuevas`}</b>
       <span class="small muted">${esc(t.name || '')}</span>
