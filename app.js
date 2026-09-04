@@ -128,6 +128,30 @@ function etapasNuevas(t){
   return etapasSorteadas(t).length - (sorteoVisto()[t.id] || 0);
 }
 
+/* ---- novedades vistas (dispositivo) ---- */
+// Última snapshot resumida (resumenTorneo) que este dispositivo vio de cada torneo. A
+// diferencia de sorteoVisto, acá no hace falta un gesto de "marcar visto" aparte:
+// mostrar el aviso (toast, notificación o resumen al volver) ya cuenta como visto.
+const LS_NOVEDADES = 'noventeros.novedadesVisto';
+function novedadesVisto(){
+  try{ return JSON.parse(localStorage.getItem(LS_NOVEDADES)) || {}; }
+  catch(e){ return {}; }   // modo privado o JSON corrupto: se empieza de cero
+}
+function marcarNovedadesVisto(id, resumen){
+  try{
+    const visto = novedadesVisto();
+    visto[id] = resumen;
+    localStorage.setItem(LS_NOVEDADES, JSON.stringify(visto));
+  }catch(e){}
+}
+function borrarNovedadesVisto(id){
+  try{
+    const visto = novedadesVisto();
+    delete visto[id];
+    localStorage.setItem(LS_NOVEDADES, JSON.stringify(visto));
+  }catch(e){}
+}
+
 /* ---- mi código de alias (dispositivo) ---- */
 // Qué código conoce este dispositivo para cada alias que reclamó o desbloqueó. Si el
 // dispositivo ya tiene el código correcto para un alias, nunca vuelve a pedírselo.
