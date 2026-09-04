@@ -607,6 +607,22 @@ function fmtDate(d){
   return dt.toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'});
 }
 
+// Único camino que escribe un jugador a un torneo. Recarga el torneo fresco y
+// re-chequea cupo/duplicados contra ese estado, no contra lo que se validó al tipear —
+// puede haber pasado tiempo entre que alguien completó el formulario y que esto corre
+// (por ejemplo, mientras busca el código de un alias protegido en el drawer).
+async function intentarRegistro(tournamentId, {alias, club, country}){
+  const fresh = await loadTournament(tournamentId);
+  if(!fresh) return {ok:false, campo:null, error:'El torneo ya no existe.'};
+  if(!hayCupo(fresh)) return {ok:false, campo:null, error:'Los cupos se llenaron justo ahora.'};
+  if(aliasTaken(fresh, alias)) return {ok:false, campo:'alias', error:'Ese alias ya está tomado.'};
+  if(clubTaken(fresh, club)) return {ok:false, campo:'club', error:'Ese club ya fue propuesto por otro jugador.'};
+  if(countryTaken(fresh, country)) return {ok:false, campo:'country', error:'Ese país ya fue propuesto por otro jugador.'};
+  fresh.players.push({id:uid(), alias, club, country, assignedTeam:null});
+  await saveTournament(fresh);
+  return {ok:true};
+}
+
 function renderRegister(){
   const t = CURRENT;
   let html = `<div class="section-title"><div class="num"><span class="material-symbols-outlined">edit_note</span></div><h3>Inscripción</h3></div>`;
@@ -659,22 +675,24 @@ function renderRegister(){
     errAlias.textContent='';
     errClub.textContent='';
     errCountry.textContent='';
-    let ok = true;
-    const fresh = await loadTournament(t.id); // re-check latest to avoid race
-    if(!alias){ errAlias.textContent='Escribe un alias.'; ok=false; }
-    else if(aliasTaken(fresh, alias)){ errAlias.textContent='Ese alias ya está tomado.'; ok=false; }
+    let formatoOk = true;
+    if(!alias){ errAlias.textContent='Escribe un alias.'; formatoOk=false; }
     const clubMatch = findTeamMatch(club,'club');
-    if(!club){ errClub.textContent='Escribe un club.'; ok=false; }
-    else if(!clubMatch){ errClub.textContent='Ese club no existe en la lista válida de FC26.'; ok=false; }
-    else if(clubTaken(fresh, club)){ errClub.textContent='Ese club ya fue propuesto por otro jugador.'; ok=false; }
+    if(!club){ errClub.textContent='Escribe un club.'; formatoOk=false; }
+    else if(!clubMatch){ errClub.textContent='Ese club no existe en la lista válida de FC26.'; formatoOk=false; }
     const countryMatch = findTeamMatch(country,'country');
-    if(!country){ errCountry.textContent='Escribe un país.'; ok=false; }
-    else if(!countryMatch){ errCountry.textContent='Ese país no existe en la lista válida de FC26.'; ok=false; }
-    else if(countryTaken(fresh, country)){ errCountry.textContent='Ese país ya fue propuesto por otro jugador.'; ok=false; }
-    if(!ok) return;
-    if(!hayCupo(fresh)){ regMsg.innerHTML='<span class="field-error">Los cupos se llenaron justo ahora.</span>'; return; }
-    fresh.players.push({id:uid(), alias, club:clubMatch, country:countryMatch, assignedTeam:null});
-    await saveTournament(fresh);
+    if(!country){ errCountry.textContent='Escribe un país.'; formatoOk=false; }
+    else if(!countryMatch){ errCountry.textContent='Ese país no existe en la lista válida de FC26.'; formatoOk=false; }
+    if(!formatoOk) return;
+
+    const resultado = await intentarRegistro(t.id, {alias, club:clubMatch, country:countryMatch});
+    if(!resultado.ok){
+      if(resultado.campo==='alias') errAlias.textContent = resultado.error;
+      else if(resultado.campo==='club') errClub.textContent = resultado.error;
+      else if(resultado.campo==='country') errCountry.textContent = resultado.error;
+      else regMsg.innerHTML = `<span class="field-error">${esc(resultado.error)}</span>`;
+      return;
+    }
     regMsg.innerHTML = '<span class="field-ok"><span class="material-symbols-outlined" style="font-size:1em;">check_circle</span> ¡Inscripción confirmada! Nos vemos en la cancha.</span>';
     setTimeout(()=>render(), 700);
   });
