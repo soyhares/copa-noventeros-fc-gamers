@@ -243,6 +243,58 @@ function agregarTorneo(lista, entrada){
   return [...lista.filter(x=>x.id!==entrada.id), entrada];
 }
 
+/* ---- novedades: diff entre snapshots del torneo ---- */
+// Proyección mínima para comparar: solo lo que diffTorneo necesita, no el documento
+// entero. Los partidos de bracket no tienen id propio: se identifican por su posición
+// (ronda, índice), estable porque las rondas solo se agregan, nunca se reordenan.
+function resumenTorneo(t){
+  const partido = m => ({p1:m.p1, p2:m.p2, s1:m.s1, s2:m.s2, played:m.played});
+  const grupos = {};
+  Object.entries(t.groupMatches||{}).forEach(([k,ms])=>{ grupos[k] = ms.map(partido); });
+  const rounds = (t.bracket ? t.bracket.rounds : []).map(r => r.partidos.map(partido));
+  return { status:t.status, champion:t.champion||null, grupos, rounds };
+}
+
+// anterior: resumenTorneo() de la última vez que este dispositivo miró (o null si es la
+// primera vez). actual: el torneo tal cual llega de Firestore, o undefined si el
+// documento ya no existe. Los grupos se recorren por clave explícita (no flattening por
+// orden de iteración): Firestore no garantiza el orden de las claves de un mapa, y dos
+// lecturas del mismo documento podrían traerlas en orden distinto.
+function diffTorneo(anterior, actual){
+  if(actual === undefined){
+    if(anterior && anterior.status !== 'finished') return [{tipo:'torneo_eliminado'}];
+    return [];
+  }
+  if(anterior === null) return [];
+
+  const eventos = [];
+  const actualResumen = resumenTorneo(actual);
+
+  Object.keys(actualResumen.grupos).sort().forEach(k => {
+    (actualResumen.grupos[k]||[]).forEach((m,i) => {
+      const previo = (anterior.grupos[k]||[])[i];
+      if(m.played && !(previo && previo.played)){
+        eventos.push({tipo:'resultado', p1:m.p1, p2:m.p2, s1:m.s1, s2:m.s2});
+      }
+    });
+  });
+  (actualResumen.rounds||[]).forEach((ronda, ri) => {
+    ronda.forEach((m,i) => {
+      const previo = ((anterior.rounds||[])[ri]||[])[i];
+      if(m.played && !(previo && previo.played)){
+        eventos.push({tipo:'resultado', p1:m.p1, p2:m.p2, s1:m.s1, s2:m.s2});
+      }
+    });
+  });
+  if(actual.status !== anterior.status){
+    eventos.push({tipo:'fase', de:anterior.status, a:actual.status});
+  }
+  if(actual.champion && !anterior.champion){
+    eventos.push({tipo:'campeon', jugadorId:actual.champion});
+  }
+  return eventos;
+}
+
 /* ================= TOURNAMENT MODEL ================= */
 // Una Liga se modela como un torneo de UN SOLO grupo ('L') sin bracket. Así toda la
 // maquinaria de grupos (computeStandings, goleoTable, carga de marcadores, CSV) se
