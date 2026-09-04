@@ -2002,8 +2002,17 @@ function withTimeout(p, ms){
   return Promise.race([p, new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')), ms))]);
 }
 
-function showBootError(titulo, detalle){
+// Saca el loader de arranque (logo girando + "Conectando…") y revela #app: se llama
+// tanto si boot() terminó bien como si terminó en showBootError, porque en los dos
+// casos ya hay algo real que mostrar en vez de la pantalla de carga.
+function revelarApp(){
   document.getElementById('app').classList.add('listo');
+  const loader = document.getElementById('boot-loader');
+  if(loader) loader.remove();
+}
+
+function showBootError(titulo, detalle){
+  revelarApp();
   const pill = document.getElementById('status-pill');
   pill.textContent = 'Sin conexión'; pill.className = 'pill';
   $main.innerHTML = `<div class="empty">
@@ -2067,7 +2076,7 @@ async function boot(){
   render();
   // Recién acá hay contenido real pintado y enganchado en #main: revelar el shell
   // con el fade de style.css en vez de mostrar el hueco en blanco de antes.
-  document.getElementById('app').classList.add('listo');
+  revelarApp();
   attachTournamentListener(torneoActivoId());
 }
 boot();

@@ -87,6 +87,14 @@
     opacity:0;transition:opacity .4s ease;
   }
   #app.listo{opacity:1;}
+  /* Cubre #app (que arranca invisible) mientras boot() conecta con Firestore: revelarApp()
+     lo saca del DOM en cuanto hay algo real que mostrar (éxito o error de arranque). */
+  #boot-loader{
+    position:fixed;inset:0;z-index:50;background:var(--bg);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+  }
+  #boot-loader img{width:64px;height:64px;object-fit:contain;opacity:.55;animation:girar 1.4s linear infinite;}
+  #boot-loader p{font-family:var(--font-ui);font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);}
   /* 90px de aire fijo alcanzaba en dispositivos sin home indicator, pero .tabbar suma
      env(safe-area-inset-bottom) a su propia altura y este padding no lo sumaba: en un
      iPhone con esa franja, el último botón quedaba tapado. */
