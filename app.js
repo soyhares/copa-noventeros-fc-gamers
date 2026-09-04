@@ -122,11 +122,10 @@ function attachTournamentListener(id){
 function attachIndexListener(){
   onSnapshot(doc(db,'meta','config'), (snap)=>{
     if(!snap.exists() || isTypingNow()) return;
+    // meta/config ya solo trae las listas válidas de FC26: cuál es el torneo activo
+    // vive en el dispositivo (localStorage), no en un índice global.
     const data = snap.data();
-    const activeChanged = !INDEX || INDEX.activeId !== data.activeId;
-    INDEX = data;
-    if(!INDEX.validTeams) INDEX.validTeams = DEFAULT_TEAMS;
-    if(activeChanged) attachTournamentListener(INDEX.activeId);
+    INDEX = { validTeams: (data && data.validTeams) || DEFAULT_TEAMS };
     render();
   });
 }
@@ -331,7 +330,7 @@ function renderHome(){
   </div>`;
 
   if(!t){
-    html += `<div class="empty"><span class="ic"><span class="material-symbols-outlined">sports_esports</span></span>Todavía no hay un torneo activo.<br>El admin debe crear uno.</div>`;
+    html += `<div class="empty"><span class="ic"><span class="material-symbols-outlined">sports_esports</span></span>No estás en ningún torneo todavía.</div>`;
   } else {
     html += `<div class="card card-accent">
       <div class="list-item"><span class="name"><span class="material-symbols-outlined">calendar_month</span> Fecha del torneo</span><span>${fmtDate(t.eventDate)}</span></div>
@@ -361,10 +360,28 @@ function renderHome(){
     <b style="color:var(--white)">5. Clasificación —</b> avanzan quienes sumen más puntos en su grupo.`}
   </div>`;
 
+  html += `<div class="section-title"><div class="num"><span class="material-symbols-outlined">key</span></div><h3>¿Te invitaron?</h3></div>
+  <div class="card tight">
+    <p class="small muted">Pega el código que te compartió el organizador. No necesitas cuenta.</p>
+    <input id="in-codigo" placeholder="NOV-4K2P" maxlength="12" autocomplete="off" style="text-transform:uppercase;letter-spacing:.12em;">
+    <div id="err-codigo" class="field-error"></div>
+    <button class="btn secondary" id="btn-unirse" style="margin-top:10px;">Unirme al torneo</button>
+  </div>`;
+
   html += `<button class="btn ghost" data-action="show-history">Ver historial de campeones</button>`;
   $main.innerHTML = html;
   bindNav();
   $main.querySelector('[data-action="show-history"]').onclick = showHistory;
+  document.getElementById('btn-unirse').onclick = async (ev)=> conCarga(ev.currentTarget, 'Buscando…', async ()=>{
+    // Capturado antes del await: un onSnapshot puede repintar #main mientras buscamos.
+    const elCodigo = document.getElementById('in-codigo');
+    const errCodigo = document.getElementById('err-codigo');
+    errCodigo.textContent = '';
+    const r = await unirseACodigo(elCodigo.value);
+    if(!r.ok){ errCodigo.textContent = r.error; return; }
+    VIEW = 'home';
+    render();
+  });
 }
 
 async function showHistory(){
@@ -393,7 +410,7 @@ function fmtDate(d){
 function renderRegister(){
   const t = CURRENT;
   let html = `<div class="section-title"><div class="num"><span class="material-symbols-outlined">edit_note</span></div><h3>Inscripción</h3></div>`;
-  if(!t){ html += `<div class="empty"><span class="ic"><span class="material-symbols-outlined">warning</span></span>No hay torneo activo para inscribirse.</div>`; $main.innerHTML=html; return; }
+  if(!t){ html += `<div class="empty"><span class="ic"><span class="material-symbols-outlined">key</span></span>No estás en ningún torneo.<br>Pega el código que te compartieron desde <b>Inicio</b>.</div>`; $main.innerHTML=html; return; }
   if(t.status!=='registration'){
     html += `<div class="empty"><span class="ic"><span class="material-symbols-outlined">lock</span></span>Las inscripciones para <b>${esc(t.name)}</b> están cerradas.</div>`;
     $main.innerHTML = html; return;
@@ -921,6 +938,24 @@ async function misTorneosComoOwner(){
   return snap.docs.map(d=>d.data());
 }
 
+// No hay índice global de torneos, así que el código se resuelve con una consulta.
+// Es la única consulta que hace un jugador sin cuenta.
+async function buscarPorCodigo(codigo){
+  const snap = await getDocs(query(collection(db,'tournaments'), where('joinCode','==',codigo)));
+  return snap.empty ? null : snap.docs[0].data();
+}
+async function unirseACodigo(entrada){
+  const codigo = normCodigo(entrada);
+  if(!codigo) return { ok:false, error:'Ese código no tiene el formato correcto. Debe ser algo como NOV-4K2P.' };
+  const t = await buscarPorCodigo(codigo);
+  if(!t) return { ok:false, error:'No encontramos ningún torneo con ese código. Revísalo con quien te invitó.' };
+  guardarMisTorneos(agregarTorneo(leerMisTorneos(), {id:t.id, nombre:t.name, rol:'jugador'}));
+  setTorneoActivoId(t.id);
+  CURRENT = t;
+  attachTournamentListener(t.id);
+  return { ok:true, torneo:t };
+}
+
 function bindAccionesTorneo(raiz){
   raiz.querySelectorAll('[data-act="export"]').forEach(b=> b.onclick = async ()=>{
     const tt = await loadTournament(b.dataset.id);
@@ -1251,7 +1286,15 @@ async function boot(){
   }
   try{
     await withTimeout(loadIndex(), 8000);
-    if(INDEX.activeId) CURRENT = await withTimeout(loadTournament(INDEX.activeId), 8000);
+    // Link de invitación: ?j=NOV-4K2P. Se consume una sola vez y se limpia de la barra
+    // de direcciones, para que recargar o compartir la URL no reintente unirse.
+    const codigoUrl = new URLSearchParams(location.search).get('j');
+    if(codigoUrl){
+      await withTimeout(unirseACodigo(codigoUrl), 8000);
+      history.replaceState(null, '', location.pathname);
+    }
+    const activo = torneoActivoId();
+    if(activo) CURRENT = await withTimeout(loadTournament(activo), 8000);
   }catch(e){
     showBootError('No se pudo conectar con la base de datos',
       'Revisa tu conexión a internet y que los datos de <b>firebase-config.js</b> sean correctos.');
@@ -1265,7 +1308,7 @@ async function boot(){
     if(VIEW==='admin') render();
   });
   render();
-  attachTournamentListener(INDEX.activeId);
+  attachTournamentListener(torneoActivoId());
   attachIndexListener();
 }
 boot();
