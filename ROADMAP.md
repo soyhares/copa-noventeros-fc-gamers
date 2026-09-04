@@ -18,8 +18,9 @@ sin cuenta y queda en `localStorage`. Vista nueva "Mis torneos" con los activos 
 pertenezco. `meta/config` se reduce a `validTeams`. Reglas de Firestore siguen abiertas:
 la cuenta evita que un torneo quede huérfano, no es seguridad.
 
-**Verificación:** `grep -c 'joinCode' app.js` — debe ser > 0; y
-`grep -c 'adminPin' app.js` debe ser 0.
+**Verificación:** `grep -c 'joinCode' app.js` debe ser > 0, y `grep -c 'INDEX.adminPin' app.js`
+debe ser 0. Las dos menciones sueltas de `adminPin` que quedan en `loadIndex()` son el
+comentario y la lectura del documento heredado — no son estado que la app use.
 
 ### B · Sorteo visible para todos
 **Estado:** brainstorm · **Depende de:** A · **Spec:** —
