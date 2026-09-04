@@ -389,35 +389,56 @@ function renderHome(){
 }
 
 function renderMisTorneos(){
-  const activo = torneoActivoId();
-  const lista = leerMisTorneos();
   let html = `<div class="section-title"><div class="num"><span class="material-symbols-outlined">list_alt</span></div><h3>Mis torneos</h3></div>`;
-  if(lista.length===0){
-    html += `<div class="empty"><span class="ic"><span class="material-symbols-outlined">key</span></span>No estás en ningún torneo.<br>Pega un código desde <b>Inicio</b> o crea el tuyo.</div>`;
-  } else {
-    html += `<div class="card tight" id="mis-lista">${lista.map(x=>`<div class="list-item">
-      <span class="name">${esc(x.nombre)} ${activo===x.id?'<span class="badge on">activo</span>':''}<br><span class="n4">${x.rol==='admin'?'ORGANIZAS':'JUEGAS'}</span></span>
-      <span class="sub">${activo===x.id?'':`<button class="btn small ghost" data-ir="${x.id}">Ver</button>`}</span>
-    </div>`).join('')}</div>`;
-  }
+  html += `<div id="mis-lista"><div class="empty small">Cargando…</div></div>`;
   html += `<button class="btn" id="ir-admin" style="margin-top:14px;">Crear un torneo nuevo</button>`;
   $main.innerHTML = html;
   bindNav();
+
+  // Se pinta después porque necesita consultar el estado real de cada torneo (el
+  // localStorage solo guarda id/nombre/rol). La referencia se captura ya, antes del
+  // await: si llega una actualización remota y se repinta #main, escribir en el nodo
+  // desprendido no falla, simplemente no se ve.
+  const misLista = document.getElementById('mis-lista');
   document.getElementById('ir-admin').onclick = ()=>{ VIEW='admin'; SUBVIEW_ADMIN='torneos'; render(); };
-  $main.querySelectorAll('[data-ir]').forEach(b => b.onclick = ()=> conCarga(b, 'Abriendo…', async ()=>{
-    const id = b.dataset.ir;
-    const t = await loadTournament(id);
-    if(!t){
-      // El organizador lo borró: sacarlo del dispositivo en vez de dejar un ítem fantasma.
-      guardarMisTorneos(leerMisTorneos().filter(x=>x.id!==id));
-      renderMisTorneos();
+
+  const lista = leerMisTorneos();
+  Promise.all(lista.map(x => loadTournament(x.id).then(t => ({x, t})))).then(pares=>{
+    // El organizador borró estos: sacarlos del dispositivo en vez de dejar ítems fantasma.
+    const vivos = pares.filter(({t})=> t!=null);
+    if(vivos.length !== pares.length){
+      guardarMisTorneos(vivos.map(({x})=>x));
+    }
+    // Un torneo finalizado es historial, no basura: se queda en localStorage pero no
+    // ocupa espacio en "Mis torneos" (spec del dueño de producto).
+    const visibles = vivos.filter(({t})=> t.status !== 'finished');
+    if(visibles.length===0){
+      misLista.innerHTML = `<div class="empty"><span class="ic"><span class="material-symbols-outlined">key</span></span>No estás en ningún torneo.<br>Pega un código desde <b>Inicio</b> o crea el tuyo.</div>`;
       return;
     }
-    setTorneoActivoId(id);
-    CURRENT = t;
-    attachTournamentListener(id);
-    VIEW='home'; render();
-  }));
+    const activo = torneoActivoId();
+    misLista.innerHTML = `<div class="card tight">${visibles.map(({x,t})=>{
+      const st = statusLabel(t);
+      return `<div class="list-item">
+      <span class="name">${esc(x.nombre)} <span class="pill ${st.cls}">${esc(st.text)}</span> ${activo===x.id?'<span class="badge on">activo</span>':''}<br><span class="n4">${x.rol==='admin'?'ORGANIZAS':'JUEGAS'}</span></span>
+      <span class="sub">${activo===x.id?'':`<button class="btn small ghost" data-ir="${x.id}">Ver</button>`}</span>
+    </div>`;
+    }).join('')}</div>`;
+    misLista.querySelectorAll('[data-ir]').forEach(b => b.onclick = ()=> conCarga(b, 'Abriendo…', async ()=>{
+      const id = b.dataset.ir;
+      const t = await loadTournament(id);
+      if(!t){
+        // El organizador lo borró justo ahora: sacarlo del dispositivo en vez de dejar un ítem fantasma.
+        guardarMisTorneos(leerMisTorneos().filter(x=>x.id!==id));
+        renderMisTorneos();
+        return;
+      }
+      setTorneoActivoId(id);
+      CURRENT = t;
+      attachTournamentListener(id);
+      VIEW='home'; render();
+    }));
+  });
 }
 
 async function showHistory(){
