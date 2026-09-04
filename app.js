@@ -48,6 +48,9 @@ async function conAnimacion(fn){
   ANIMANDO = true;
   try { await fn(); } finally { ANIMANDO = false; }
 }
+// Si el aviso te trajo hasta acá, la reproducción arranca sola y solo desde lo que no
+// viste. Entrar a la pestaña a dedo no dispara nada: ahí está el botón de repetir.
+let AUTOPLAY_DESDE = null;
 let unsubTournament = null;
 let prevUid = null;     // para detectar cambios de sesión en onAuthStateChanged
 let listenersListos = false;  // guarda que onAuthStateChanged y attachIndexListener se registren una sola vez
@@ -144,12 +147,15 @@ function attachTournamentListener(id){
   unsubTournament = onSnapshot(doc(db,'tournaments', id), (snap)=>{
     if(isTypingNow()) return; // no interrumpir si alguien está escribiendo
     CURRENT = snap.exists() ? snap.data() : null;
+    // Durante una animación se actualiza el estado pero no se repinta: repintar cortaría
+    // la película a la mitad. reproducirSorteo llama render() al terminar.
+    if(ANIMANDO) return;
     render();
   });
 }
 function attachIndexListener(){
   onSnapshot(doc(db,'meta','config'), (snap)=>{
-    if(!snap.exists() || isTypingNow()) return;
+    if(!snap.exists() || isTypingNow() || ANIMANDO) return;
     // meta/config ya solo trae las listas válidas de FC26: cuál es el torneo activo
     // vive en el dispositivo (localStorage), no en un índice global.
     const data = snap.data();
@@ -636,8 +642,12 @@ function renderTournament(){
   const tabs = esLiga(t)
     ? [['grupos','Calendario'],['tabla','Tabla'],['goleo','Goleo']]
     : [['grupos','Grupos'],['tabla','Tabla'],['goleo','Goleo'],['llave','Llave']];
+  // La pestaña del sorteo no existe hasta que hay algo que reproducir.
+  const haySorteo = etapasSorteadas(t).length > 0;
+  if(haySorteo) tabs.push(['sorteo','Sorteo']);
   // La liga no tiene llave: si venías de un torneo Copa, esa subvista ya no existe.
   if(esLiga(t) && SUBVIEW_TOURN==='llave') SUBVIEW_TOURN='tabla';
+  if(!haySorteo && SUBVIEW_TOURN==='sorteo') SUBVIEW_TOURN='grupos';
   html += `<div class="tabs2">${tabs.map(([k,l])=>`<button data-sub="${k}" class="${SUBVIEW_TOURN===k?'active':''}">${l}</button>`).join('')}</div>`;
   html += `<div id="tourn-sub"></div>`;
   $main.innerHTML = html;
@@ -653,6 +663,7 @@ function renderTournament(){
   if(SUBVIEW_TOURN==='grupos') return renderGrupos(holder,t);
   if(SUBVIEW_TOURN==='tabla') return renderTabla(holder,t);
   if(SUBVIEW_TOURN==='goleo') return renderGoleo(holder,t);
+  if(SUBVIEW_TOURN==='sorteo') return renderSorteo(holder,t);
   if(SUBVIEW_TOURN==='llave') return renderLlave(holder,t);
 }
 
@@ -789,6 +800,38 @@ function renderLlave(holder,t){
       }
     });
   }
+}
+
+// El mismo reproductor para el admin y para el jugador. `desde` saltea las etapas ya
+// vistas: el aviso reproduce solo lo nuevo, el botón de repetir reproduce todo.
+async function reproducirSorteo(holder, t, desde = 0){
+  const etapas = etapasSorteadas(t).slice(desde);
+  if(!etapas.length) return;
+  await conAnimacion(async () => {
+    for(const etapa of etapas){
+      if(etapa === 'equipos')    await animarEquipos(holder, poolDe(t), t.drawnTeams);
+      if(etapa === 'asignacion') await animarAsignacion(holder, t, asignacionDe(t));
+      if(etapa === 'grupos')     await animarGrupos(holder, t, t.groups);
+    }
+  });
+  // El listener no repintó mientras corría la animación: hay que ponerse al día.
+  render();
+}
+
+// Información en reposo: plata y sin glow (MARCA.md §07).
+function renderSorteo(holder, t){
+  const total = etapasSorteadas(t).length;
+  const desde = AUTOPLAY_DESDE;
+  AUTOPLAY_DESDE = null;
+  const nombres = {equipos:'Equipos', asignacion:'Asignación', grupos: esLiga(t)?'Calendario':'Grupos'};
+  holder.innerHTML = `<div class="card tight">
+    <b>Sorteo</b>
+    <p class="small muted">${total === 3 ? 'El sorteo está completo.' : `Van ${total} de 3 etapas.`}</p>
+    <p class="small">${etapasSorteadas(t).map(e => esc(nombres[e])).join(' · ')}</p>
+    <button class="btn secondary" id="ver-sorteo">Repetir sorteo</button>
+  </div>`;
+  holder.querySelector('#ver-sorteo').onclick = () => reproducirSorteo(holder, t, 0);
+  if(desde !== null) reproducirSorteo(holder, t, desde);
 }
 
 /* ================= ADMIN ================= */
