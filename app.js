@@ -523,6 +523,7 @@ async function render(){
   const pillEl = document.getElementById('status-pill');
   pillEl.textContent = st.text; pillEl.className = 'pill '+st.cls;
   renderDrawer();
+  renderToasts();
 
   if(VIEW==='home') return renderHome();
   if(VIEW==='register') return renderRegister();
@@ -1123,6 +1124,36 @@ function renderDrawerAlias(){
     await mostrarAviso('¡Inscripción confirmada! Nos vemos en la cancha.', {titulo:'Listo', icono:'check_circle'});
     render();
   });
+}
+
+/* ---- toasts: cola de avisos, apilan y autodesaparecen ---- */
+let TOASTS = [];
+function encolarToast(ev, texto){
+  const id = 'tst'+Math.random().toString(36).slice(2,9);
+  TOASTS.push({id, ev, texto});
+  renderToasts();
+  setTimeout(()=>{ TOASTS = TOASTS.filter(x=>x.id!==id); renderToasts(); }, 5000);
+}
+function renderToasts(){
+  const el = document.getElementById('toasts');
+  if(!el) return;
+  el.innerHTML = TOASTS.map(({id,texto})=>`<div class="toast-card" data-toast="${id}">
+    <b>${esc(texto.titulo)}</b><span>${esc(texto.cuerpo)}</span>
+  </div>`).join('');
+  el.querySelectorAll('[data-toast]').forEach(card => card.onclick = () => {
+    const item = TOASTS.find(x=>x.id===card.dataset.toast);
+    TOASTS = TOASTS.filter(x=>x.id!==card.dataset.toast);
+    renderToasts();
+    if(item) navegarDesdeToast(item.ev);
+  });
+}
+// torneo_eliminado no navega a ningún lado: la entrada ya no existe en "Mis torneos".
+function navegarDesdeToast(ev){
+  if(ev.tipo==='resultado'){ VIEW='tournament'; SUBVIEW_TOURN='grupos'; }
+  else if(ev.tipo==='fase'){ VIEW='tournament'; SUBVIEW_TOURN = ev.a==='playoffs' ? 'llave' : 'grupos'; }
+  else if(ev.tipo==='campeon'){ VIEW='tournament'; SUBVIEW_TOURN='tabla'; }
+  else return;
+  render();
 }
 
 /* ================= ADMIN ================= */
