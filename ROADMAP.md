@@ -22,6 +22,12 @@ la cuenta evita que un torneo quede huérfano, no es seguridad.
 debe ser 0. Las dos menciones sueltas de `adminPin` que quedan en `loadIndex()` son el
 comentario y la lectura del documento heredado — no son estado que la app use.
 
+Validado en producción (v1.1.0–v1.1.2): dos organizadores con cuentas de Google distintas,
+cada uno dueño de su propio torneo (`ownerUid` aislado, confirmado leyendo Firestore
+directamente). Ajustes posteriores sobre esta base: etiqueta ORGANIZAS/JUEGAS derivada de
+la sesión activa en vez de un rol cacheado por dispositivo, status bar y scrollbar en modo
+PWA instalada, y campos de fecha precargados con hoy en el formulario de creación.
+
 ### B · Sorteo visible para todos
 **Estado:** brainstorm · **Depende de:** A · **Spec:** —
 
