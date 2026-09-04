@@ -2,12 +2,19 @@
 import { firebaseConfig } from './firebase-config.js';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js';
 import {
-  getFirestore, doc, getDoc, setDoc, deleteDoc, onSnapshot
+  getFirestore, doc, getDoc, setDoc, deleteDoc, onSnapshot,
+  collection, query, where, getDocs
 } from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore.js';
+import {
+  getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
+} from 'https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js';
 
-let db = null;
-try{ db = getFirestore(initializeApp(firebaseConfig)); }
-catch(e){ /* boot() lo detecta y muestra el mensaje */ }
+let db = null, auth = null;
+try{
+  const app = initializeApp(firebaseConfig);
+  db = getFirestore(app);
+  auth = getAuth(app);
+}catch(e){ /* boot() lo detecta y muestra el mensaje */ }
 
 async function fGet(col, id){
   const snap = await getDoc(doc(db,col,id));
@@ -30,7 +37,7 @@ const DEFAULT_TEAMS = {
 /* ================= STATE ================= */
 let INDEX = null;       // { tournaments:[{id,name,size,createdAt,status}], activeId, adminPin, validTeams:{clubs,countries} }
 let CURRENT = null;     // full active tournament object
-let ADMIN_UNLOCKED = false;
+let USER = null;   // sesión de Google del organizador, o null
 let VIEW = 'home';
 let SUBVIEW_ADMIN = 'panel';
 let SUBVIEW_TOURN = 'grupos';
@@ -44,6 +51,18 @@ function isTypingNow(){
   const tag = document.activeElement && document.activeElement.tagName;
   return tag==='INPUT' || tag==='TEXTAREA' || tag==='SELECT';
 }
+
+// El organizador se autentica; el jugador nunca. La cuenta existe para que un torneo
+// no quede huérfano si se pierde el dispositivo, NO como seguridad: las reglas de
+// Firestore siguen abiertas a propósito (ver README).
+async function entrarConGoogle(){
+  await signInWithPopup(auth, new GoogleAuthProvider());
+}
+async function salirDeGoogle(){
+  await signOut(auth);
+}
+// ¿Soy el organizador de este torneo?
+const soyOwner = t => !!USER && !!t && t.ownerUid === USER.uid;
 
 async function loadIndex(){
   let idx = await fGet('meta','config');
@@ -466,20 +485,20 @@ function renderGrupos(holder,t){
       html += `<div class="match">
         <span class="side">${esc(playerName(t,m.p1))}</span>
         <span class="score">
-          ${ADMIN_UNLOCKED ? `<input class="sc" type="number" min="0" data-m="${key}:${m.id}:s1" value="${m.s1??''}">` : `<b>${m.s1??'-'}</b>` }
+          ${soyOwner(t) ? `<input class="sc" type="number" min="0" data-m="${key}:${m.id}:s1" value="${m.s1??''}">` : `<b>${m.s1??'-'}</b>` }
           <span class="vs">:</span>
-          ${ADMIN_UNLOCKED ? `<input class="sc" type="number" min="0" data-m="${key}:${m.id}:s2" value="${m.s2??''}">` : `<b>${m.s2??'-'}</b>` }
+          ${soyOwner(t) ? `<input class="sc" type="number" min="0" data-m="${key}:${m.id}:s2" value="${m.s2??''}">` : `<b>${m.s2??'-'}</b>` }
         </span>
         <span class="side right">${esc(playerName(t,m.p2))}</span>
       </div>`;
     });
     html += `</div>`;
   }
-  if(ADMIN_UNLOCKED){
+  if(soyOwner(t)){
     html += `<button class="btn" id="save-scores">Guardar marcadores</button>`;
   }
   holder.innerHTML = html;
-  if(ADMIN_UNLOCKED){
+  if(soyOwner(t)){
     document.getElementById('save-scores').onclick = async (ev)=> conCarga(ev.currentTarget, 'Guardando…', async ()=>{
       const fresh = await loadTournament(t.id);
       holder.querySelectorAll('input.sc').forEach(inp=>{
@@ -529,9 +548,9 @@ function renderLlave(holder,t){
       html += `<div class="match">
         <span class="side">${esc(playerName(t,m.p1))}</span>
         <span class="score">
-          ${ADMIN_UNLOCKED && !m.played ? `<input class="sc" type="number" min="0" data-bm="${ri}:${mi}:s1" value="${m.s1??''}">` : `<b>${m.s1??'-'}</b>` }
+          ${soyOwner(t) && !m.played ? `<input class="sc" type="number" min="0" data-bm="${ri}:${mi}:s1" value="${m.s1??''}">` : `<b>${m.s1??'-'}</b>` }
           <span class="vs">:</span>
-          ${ADMIN_UNLOCKED && !m.played ? `<input class="sc" type="number" min="0" data-bm="${ri}:${mi}:s2" value="${m.s2??''}">` : `<b>${m.s2??'-'}</b>` }
+          ${soyOwner(t) && !m.played ? `<input class="sc" type="number" min="0" data-bm="${ri}:${mi}:s2" value="${m.s2??''}">` : `<b>${m.s2??'-'}</b>` }
         </span>
         <span class="side right">${esc(playerName(t,m.p2))}</span>
       </div>`;
@@ -540,11 +559,11 @@ function renderLlave(holder,t){
   });
   if(t.status==='finished' && t.champion){
     html += `<div class="champ-banner card sello"><div class="cup"><span class="material-symbols-outlined">emoji_events</span></div><h2>${esc(playerName(t,t.champion))}</h2><p>Campeón de ${esc(t.name)}</p></div>`;
-  } else if(ADMIN_UNLOCKED){
+  } else if(soyOwner(t)){
     html += `<button class="btn" id="save-bracket">Guardar resultados de llave</button><div id="bracket-msg" style="margin-top:10px;"></div>`;
   }
   holder.innerHTML = html;
-  if(ADMIN_UNLOCKED && t.status!=='finished'){
+  if(soyOwner(t) && t.status!=='finished'){
     document.getElementById('save-bracket').onclick = async (ev)=> conCarga(ev.currentTarget, 'Guardando…', async ()=>{
       const fresh = await loadTournament(t.id);
       // Si el partido ya no existe en esa posición (otra sesión adelantó la llave
@@ -592,45 +611,28 @@ function renderLlave(holder,t){
 
 /* ================= ADMIN ================= */
 function renderAdmin(){
-  if(!INDEX.adminPin){
+  if(!USER){
     $main.innerHTML = `<div class="lock-screen">
-      <div class="ic"><span class="material-symbols-outlined">lock_open</span></div>
-      <h3>Configura tu PIN de administrador</h3>
-      <p class="muted small">Este PIN te permitirá crear torneos, activar sorteos y cargar resultados. Compártelo solo si confías en la persona.</p>
-      <input id="new-pin" placeholder="Crea un PIN (4-6 dígitos)" style="margin-top:14px;text-align:center;letter-spacing:4px;" maxlength="6">
-      <button class="btn" id="set-pin" style="margin-top:12px;">Guardar PIN</button>
+      <div class="ic"><span class="material-symbols-outlined">stadium</span></div>
+      <h3>Organiza tu torneo</h3>
+      <p class="muted small">Entra con tu cuenta de Google para crear torneos e invitar a tus amigos. Así tu torneo no se queda sin organizador aunque cambies de teléfono.</p>
+      <button class="btn" id="login-google" style="margin-top:16px;">Entrar con Google</button>
+      <p class="muted small" style="margin-top:14px;">¿Te invitaron a un torneo? No necesitas cuenta: pega tu código desde <b>Inicio</b>.</p>
     </div>`;
-    document.getElementById('set-pin').onclick = async (ev)=> conCarga(ev.currentTarget, 'Guardando…', async ()=>{
-      const pin = document.getElementById('new-pin').value.trim();
-      if(pin.length<4){ alert('El PIN debe tener al menos 4 dígitos.'); return; }
-      INDEX.adminPin = pin;
-      await saveIndex();
-      ADMIN_UNLOCKED = true;
-      renderAdmin();
-    });
-    return;
-  }
-  if(!ADMIN_UNLOCKED){
-    $main.innerHTML = `<div class="lock-screen">
-      <div class="ic"><span class="material-symbols-outlined">lock</span></div>
-      <h3>Acceso de administrador</h3>
-      <input id="pin-try" placeholder="PIN" style="margin-top:14px;text-align:center;letter-spacing:4px;" maxlength="6">
-      <div id="pin-err" class="field-error"></div>
-      <button class="btn" id="try-pin" style="margin-top:12px;">Entrar</button>
-    </div>`;
-    document.getElementById('try-pin').onclick = ()=>{
-      const v = document.getElementById('pin-try').value.trim();
-      if(v===INDEX.adminPin){ ADMIN_UNLOCKED=true; renderAdmin(); }
-      else document.getElementById('pin-err').textContent='PIN incorrecto.';
-    };
+    document.getElementById('login-google').onclick = async (ev)=> conCarga(ev.currentTarget, 'Abriendo…', entrarConGoogle);
     return;
   }
 
   const tabs = [['panel','Panel'],['equipos','Sorteos'],['torneos','Torneos'],['lista','Lista válida']];
-  let html = `<div class="section-title"><div class="num"><span class="material-symbols-outlined">lock</span></div><h3>Administración</h3></div>`;
+  let html = `<div class="section-title"><div class="num"><span class="material-symbols-outlined">stadium</span></div><h3>Administración</h3></div>
+  <div class="card tight" style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+    <span class="small muted">Sesión de <b>${esc(USER.displayName || USER.email || 'organizador')}</b></span>
+    <button class="btn small ghost" id="logout-google">Salir</button>
+  </div>`;
   html += `<div class="tabs2">${tabs.map(([k,l])=>`<button data-asub="${k}" class="${SUBVIEW_ADMIN===k?'active':''}">${l}</button>`).join('')}</div>`;
   html += `<div id="admin-sub"></div>`;
   $main.innerHTML = html;
+  document.getElementById('logout-google').onclick = async (ev)=> conCarga(ev.currentTarget, 'Saliendo…', salirDeGoogle);
   $main.querySelectorAll('[data-asub]').forEach(b=> b.onclick=()=>{ SUBVIEW_ADMIN=b.dataset.asub; renderAdmin(); });
   const holder = document.getElementById('admin-sub');
 
@@ -1179,6 +1181,13 @@ async function boot(){
       'Revisa tu conexión a internet y que los datos de <b>firebase-config.js</b> sean correctos.');
     return;
   }
+  // La sesión de Google se restaura de forma asíncrona al cargar la página: sin este
+  // listener, la primera pintada de Admin siempre mostraría el botón de entrar aunque
+  // ya hubiera sesión. Solo repinta si estás mirando Admin, para no interrumpir otra vista.
+  onAuthStateChanged(auth, u => {
+    USER = u;
+    if(VIEW==='admin') render();
+  });
   render();
   attachTournamentListener(INDEX.activeId);
   attachIndexListener();
