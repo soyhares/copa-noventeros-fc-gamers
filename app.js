@@ -157,6 +157,11 @@ async function pushHistory(t){
   hist.push({id:t.id, name:t.name, champion:playerName(t,t.champion), date:Date.now(), size:t.size, mode:t.mode||'copa'});
   await saveHistory(hist);
 }
+/* ---- alias protegido (global) ---- */
+// meta/aliases: un documento único { items: { [aliasNormalizado]: código } }, mismo
+// patrón de lectura/escritura entera que meta/history — cero infraestructura nueva.
+async function loadAliases(){ const a = await fGet('meta','aliases'); return (a && a.items) || {}; }
+async function saveAliases(mapa){ await fSet('meta','aliases', {items:mapa}); }
 
 /* ---- suscripciones en tiempo real (reemplazan el polling) ---- */
 function attachTournamentListener(id){
@@ -199,6 +204,14 @@ function generarJoinCode(){
   let s = '';
   for(let i=0;i<4;i++) s += ALFABETO_CODIGO[Math.floor(Math.random()*ALFABETO_CODIGO.length)];
   return 'NOV-'+s;
+}
+// Código del registro global de alias: mismo alfabeto que generarJoinCode (sin
+// caracteres que se confunden al dictar), pero sin el prefijo NOV- — ese prefijo
+// identifica códigos de torneo, este es un namespace distinto.
+function generarCodigoAlias(){
+  let s = '';
+  for(let i=0;i<4;i++) s += ALFABETO_CODIGO[Math.floor(Math.random()*ALFABETO_CODIGO.length)];
+  return s;
 }
 // El jugador pega el código como le llegó: con prefijo o sin él, en minúsculas, con
 // espacios o guiones raros. El prefijo solo se quita si al quitarlo quedan 4 caracteres;
