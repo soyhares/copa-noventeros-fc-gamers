@@ -64,6 +64,25 @@ async function salirDeGoogle(){
 // ¿Soy el organizador de este torneo?
 const soyOwner = t => !!USER && !!t && t.ownerUid === USER.uid;
 
+/* ---- mis torneos (dispositivo) ---- */
+// El jugador no tiene cuenta: la pertenencia a un torneo vive en el dispositivo.
+// Si borra los datos del navegador, vuelve a pegar el código y no perdió nada.
+const LS_TORNEOS = 'noventeros.misTorneos';
+const LS_ACTIVO  = 'noventeros.torneoActivo';
+function leerMisTorneos(){
+  try{ return JSON.parse(localStorage.getItem(LS_TORNEOS)) || []; }
+  catch(e){ return []; }   // modo privado o JSON corrupto: se empieza de cero
+}
+function guardarMisTorneos(lista){
+  try{ localStorage.setItem(LS_TORNEOS, JSON.stringify(lista)); }catch(e){}
+}
+function torneoActivoId(){
+  try{ return localStorage.getItem(LS_ACTIVO); }catch(e){ return null; }
+}
+function setTorneoActivoId(id){
+  try{ id ? localStorage.setItem(LS_ACTIVO, id) : localStorage.removeItem(LS_ACTIVO); }catch(e){}
+}
+
 async function loadIndex(){
   let idx = await fGet('meta','config');
   if(!idx){
@@ -151,6 +170,9 @@ const LIGA_MIN = 3;
 function blankTournament(name, size, eventDate, regDeadline, mode='copa', vuelta=false){
   return {
     id:newId(), name, size, eventDate, regDeadline,
+    ownerUid: null,        // uid de Google del organizador; lo pone quien lo crea
+    ownerName: '',         // displayName, solo para mostrar "Organiza: …"
+    joinCode: generarJoinCode(),  // "NOV-4K2P" — se comparte, no cambia nunca
     mode,                  // 'copa' | 'liga'
     vuelta,                // solo liga: true = ida y vuelta
     status:'registration', // registration -> drawn(teams) -> groups -> playoffs -> finished
@@ -866,6 +888,66 @@ async function runDrawGroups(t, holder){
   setTimeout(()=>renderAdmin(), 600);
 }
 
+// El código es información en reposo, no un estado ni un momento: va en plata, sin
+// glow (MARCA.md §07 y §08). El verde aparece solo en el instante de copiar.
+function tarjetaInvitacion(t){
+  const link = location.origin + location.pathname + '?j=' + encodeURIComponent(t.joinCode);
+  return `<div class="card invite">
+    <div class="n4">Invita a tus amigos</div>
+    <div class="invite-code" id="inv-code">${esc(t.joinCode)}</div>
+    <div class="invite-actions">
+      <button class="btn small ghost" data-copy="${esc(t.joinCode)}">Copiar código</button>
+      <button class="btn small ghost" data-copy="${esc(link)}">Copiar link</button>
+    </div>
+    <p class="small muted">Quien tenga el código puede inscribirse. No necesita cuenta.</p>
+  </div>`;
+}
+function bindTarjetaInvitacion(raiz){
+  raiz.querySelectorAll('[data-copy]').forEach(b => b.onclick = async ()=>{
+    const original = b.textContent;
+    try{ await navigator.clipboard.writeText(b.dataset.copy); }
+    catch(e){ b.textContent = 'No se pudo copiar'; setTimeout(()=>{ b.textContent = original; }, 1400); return; }
+    b.textContent = '¡Copiado!';
+    b.classList.add('ok');   // el verde marca el momento, y se apaga solo
+    setTimeout(()=>{ b.textContent = original; b.classList.remove('ok'); }, 1400);
+  });
+}
+
+// Los torneos del organizador se consultan a Firestore por ownerUid, no se leen del
+// dispositivo: es lo que le permite recuperarlos al entrar con Google en otro teléfono.
+async function misTorneosComoOwner(){
+  if(!USER) return [];
+  const snap = await getDocs(query(collection(db,'tournaments'), where('ownerUid','==',USER.uid)));
+  return snap.docs.map(d=>d.data());
+}
+
+function bindAccionesTorneo(raiz){
+  raiz.querySelectorAll('[data-act="export"]').forEach(b=> b.onclick = async ()=>{
+    const tt = await loadTournament(b.dataset.id);
+    if(tt) exportTournamentCSV(tt);
+  });
+  raiz.querySelectorAll('[data-act="activate"]').forEach(b=> b.onclick = ()=> conCarga(b, 'Activando…', async ()=>{
+    setTorneoActivoId(b.dataset.id);
+    CURRENT = await loadTournament(b.dataset.id);
+    attachTournamentListener(b.dataset.id);
+    renderAdmin();
+  }));
+  raiz.querySelectorAll('[data-act="delete"]').forEach(b=> b.onclick = async ()=>{
+    if(!confirm('¿Eliminar este torneo y todos sus datos? Esta acción no se puede deshacer.')) return;
+    await conCarga(b, 'Eliminando…', async ()=>{
+      await fDelete('tournaments', b.dataset.id);
+      guardarMisTorneos(leerMisTorneos().filter(x=>x.id!==b.dataset.id));
+      if(torneoActivoId()===b.dataset.id){
+        const resto = leerMisTorneos()[0];
+        setTorneoActivoId(resto ? resto.id : null);
+        CURRENT = resto ? await loadTournament(resto.id) : null;
+        attachTournamentListener(resto ? resto.id : null);
+      }
+      renderAdmin();
+    });
+  });
+}
+
 function renderAdminTorneos(holder){
   let html = `<div class="card tight">
     <b>Crear nuevo torneo</b>
@@ -886,24 +968,38 @@ function renderAdminTorneos(holder){
     <label>Cierre de inscripción</label><input id="nt-deadline" type="date">
     <button class="btn" id="create-t" style="margin-top:14px;">Crear torneo</button>
   </div>`;
-  html += `<div class="section-title"><div class="num"><span class="material-symbols-outlined">list_alt</span></div><h3>Torneos existentes</h3></div>`;
-  if(INDEX.tournaments.length===0){ html += `<div class="empty small">Ningún torneo creado todavía.</div>`; }
-  else {
-    html += `<div class="card tight">`;
-    INDEX.tournaments.forEach(tt=>{
-      const active = INDEX.activeId===tt.id;
-      html += `<div class="list-item">
-        <span class="name">${esc(tt.name)} <span class="badge">${tt.mode==='liga'?'Liga':'Copa'}</span> ${active?'<span class=\"badge on\">activo</span>':''}</span>
-        <span class="sub" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
-          ${!active?`<button class="btn small ghost" data-act="activate" data-id="${tt.id}">Activar</button>`:''}
-          <button class="btn small ghost" data-act="export" data-id="${tt.id}"><span class="material-symbols-outlined" style="font-size:1em;">download</span></button>
-          <button class="btn small danger" data-act="delete" data-id="${tt.id}">Eliminar</button>
-        </span>
-      </div>`;
-    });
-    html += `</div>`;
-  }
+  html += `<div class="section-title"><div class="num"><span class="material-symbols-outlined">list_alt</span></div><h3>Mis torneos</h3></div>`;
+  html += `<div id="owner-list"><div class="empty small">Cargando…</div></div>`;
   holder.innerHTML = html;
+
+  // Se pinta después porque necesita una consulta. La referencia se captura ya, antes
+  // del await: si llega una actualización remota y se repinta #main, escribir en el nodo
+  // desprendido no falla, simplemente no se ve — que es lo correcto si la vista cambió.
+  const ownerList = document.getElementById('owner-list');
+  misTorneosComoOwner().then(torneos=>{
+    if(torneos.length===0){ ownerList.innerHTML = `<div class="empty small">Todavía no creaste ningún torneo.</div>`; return; }
+    // La consulta es también la vía de rescate: sincroniza el dispositivo con lo que
+    // realmente existe en Firestore bajo esta cuenta.
+    let lista = leerMisTorneos();
+    torneos.forEach(tt => { lista = agregarTorneo(lista, {id:tt.id, nombre:tt.name, rol:'admin'}); });
+    guardarMisTorneos(lista);
+
+    const activo = torneoActivoId();
+    ownerList.innerHTML = `<div class="card tight">` + torneos.map(tt=>`<div class="list-item">
+      <span class="name">${esc(tt.name)} <span class="badge">${tt.mode==='liga'?'Liga':'Copa'}</span> ${activo===tt.id?'<span class="badge on">activo</span>':''}<br><span class="n4">${esc(tt.joinCode||'—')}</span></span>
+      <span class="sub" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;">
+        ${activo!==tt.id?`<button class="btn small ghost" data-act="activate" data-id="${tt.id}">Activar</button>`:''}
+        <button class="btn small ghost" data-act="export" data-id="${tt.id}"><span class="material-symbols-outlined" style="font-size:1em;">download</span></button>
+        <button class="btn small danger" data-act="delete" data-id="${tt.id}">Eliminar</button>
+      </span></div>`).join('') + `</div>`;
+    bindAccionesTorneo(ownerList);
+  });
+  if(CURRENT && soyOwner(CURRENT)){
+    const invite = document.createElement('div');
+    invite.innerHTML = tarjetaInvitacion(CURRENT);
+    holder.prepend(invite);
+    bindTarjetaInvitacion(invite);
+  }
 
   document.getElementById('create-t').onclick = async (ev)=> conCarga(ev.currentTarget, 'Creando…', async ()=>{
     const name = document.getElementById('nt-name').value.trim() || 'Torneo sin nombre';
@@ -916,10 +1012,13 @@ function renderAdminTorneos(holder){
     const eventDate = document.getElementById('nt-date').value;
     const regDeadline = document.getElementById('nt-deadline').value;
     const t = blankTournament(name,size,eventDate,regDeadline,mode,vuelta);
+    t.ownerUid  = USER.uid;
+    t.ownerName = USER.displayName || '';
     await saveTournament(t);
-    INDEX.tournaments.push({id:t.id,name,size,mode,createdAt:Date.now()});
-    INDEX.activeId = t.id;
-    await saveIndex();
+    // El organizador también es "miembro" en su dispositivo: así el torneo aparece en
+    // Mis torneos sin depender de la consulta por ownerUid, que es la vía de rescate.
+    guardarMisTorneos(agregarTorneo(leerMisTorneos(), {id:t.id, nombre:t.name, rol:'admin'}));
+    setTorneoActivoId(t.id);
     CURRENT = t;
     attachTournamentListener(t.id);
     renderAdmin();
@@ -929,29 +1028,6 @@ function renderAdminTorneos(holder){
     document.getElementById('box-copa').hidden = selMode.value!=='copa';
     document.getElementById('box-liga').hidden = selMode.value!=='liga';
   };
-  holder.querySelectorAll('[data-act="export"]').forEach(b=> b.onclick = async ()=>{
-    const tt = await loadTournament(b.dataset.id);
-    if(tt) exportTournamentCSV(tt);
-  });
-  holder.querySelectorAll('[data-act="activate"]').forEach(b=> b.onclick = ()=> conCarga(b, 'Activando…', async ()=>{
-    INDEX.activeId = b.dataset.id;
-    await saveIndex();
-    CURRENT = await loadTournament(INDEX.activeId);
-    attachTournamentListener(INDEX.activeId);
-    renderAdmin();
-  }));
-  holder.querySelectorAll('[data-act="delete"]').forEach(b=> b.onclick = async ()=>{
-    if(!confirm('¿Eliminar este torneo y todos sus datos? Esta acción no se puede deshacer.')) return;
-    await conCarga(b, 'Eliminando…', async ()=>{
-      INDEX.tournaments = INDEX.tournaments.filter(x=>x.id!==b.dataset.id);
-      if(INDEX.activeId===b.dataset.id) INDEX.activeId = INDEX.tournaments[0]?.id || null;
-      await saveIndex();
-      await fDelete('tournaments', b.dataset.id);
-      CURRENT = INDEX.activeId ? await loadTournament(INDEX.activeId) : null;
-      attachTournamentListener(INDEX.activeId);
-      renderAdmin();
-    });
-  });
 }
 
 function renderAdminLista(holder){

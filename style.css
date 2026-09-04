@@ -296,3 +296,15 @@
   .error-box .material-symbols-outlined{font-size:38px;color:var(--danger);}
   .error-box h3{margin:8px 0 6px;font-family:var(--font-display);letter-spacing:.5px;}
   .error-box p{color:var(--muted);font-size:14px;margin:0 0 18px;}
+
+/* Tarjeta de invitación. El código se dicta y se teclea: monoespaciado y grande.
+   MARCA.md §07 — una etiqueta fija va en --silver, no en --accent. */
+.invite { text-align:center; }
+.invite-code{
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 30px; font-weight: 700; letter-spacing: .14em;
+  color: var(--silver); margin: 10px 0 14px;
+}
+.invite-actions{ display:flex; gap:8px; justify-content:center; flex-wrap:wrap; }
+/* El verde solo en el momento de copiar (MARCA.md §08: estado o momento, nunca reposo). */
+.btn.small.ghost.ok{ color: var(--accent); border-color: var(--accent); }
