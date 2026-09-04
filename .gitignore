@@ -8,3 +8,6 @@ firestore-debug.log
 
 # capturas y trazas del navegador de pruebas
 .playwright-mcp/
+
+# worktrees locales (superpowers:using-git-worktrees)
+.worktrees/
