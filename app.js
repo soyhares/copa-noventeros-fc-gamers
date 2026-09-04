@@ -725,9 +725,16 @@ function renderRegister(){
       else regMsg.innerHTML = `<span class="field-error">${esc(resultado.error)}</span>`;
       return;
     }
-    regMsg.innerHTML = '<span class="field-ok"><span class="material-symbols-outlined" style="font-size:1em;">check_circle</span> ¡Inscripción confirmada! Nos vemos en la cancha.</span>'
-      + (resultado.codigoNuevo ? `<br><span class="small muted">Guardá este código por si usás este alias desde otro dispositivo: <b>${esc(resultado.codigoNuevo)}</b> (no es una contraseña, solo evita que otro jugador use tu alias por error).</span>` : '');
-    setTimeout(()=>render(), 700);
+    // Modal (mostrarAviso), no el div "reg-msg": ese vive dentro de #main, y saveTournament
+    // dentro de intentarRegistro dispara el propio onSnapshot de este dispositivo casi al
+    // instante (isTypingNow() no lo frena, el foco quedó en el botón, no en un input). Ese
+    // eco repinta #main con renderRegister() antes de que este mensaje llegue a verse —
+    // y con él se perdía el código de protección del alias, que no se puede recuperar
+    // después. El modal vive fuera de #main y espera a que el jugador lo cierre.
+    const mensaje = '¡Inscripción confirmada! Nos vemos en la cancha.'
+      + (resultado.codigoNuevo ? ` Guardá este código por si usás este alias desde otro dispositivo: ${resultado.codigoNuevo} (no es una contraseña, solo evita que otro jugador use tu alias por error).` : '');
+    await mostrarAviso(mensaje, {titulo:'Listo', icono:'check_circle'});
+    render();
   });
 }
 
