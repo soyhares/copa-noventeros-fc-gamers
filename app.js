@@ -445,7 +445,7 @@ function renderMisTorneos(){
       const st = statusLabel(t);
       const esOwner = soyOwner(t);
       return `<div class="list-item">
-      <span class="name">${esc(x.nombre)} <span class="pill ${st.cls}">${esc(st.text)}</span> ${actId===x.id?'<span class="badge on">activo</span>':''}<br><span class="n4">${x.rol==='admin'?'ORGANIZAS':'JUEGAS'}</span></span>
+      <span class="name">${esc(x.nombre)} <span class="pill ${st.cls}">${esc(st.text)}</span> ${actId===x.id?'<span class="badge on">activo</span>':''}<br><span class="n4">${esOwner?'ORGANIZAS':'JUEGAS'}</span></span>
       <span class="sub">${actId===x.id && esOwner?`<button class="btn small ghost" data-admin="${x.id}">Administrar</button>`:actId===x.id?'':`<button class="btn small ghost" data-ir="${x.id}">Ver</button>`}</span>
     </div>`;
     }).join('')}</div>`;
